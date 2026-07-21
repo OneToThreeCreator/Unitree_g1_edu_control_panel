@@ -384,7 +384,8 @@ async def api_companion_rename_config(mode: str, old_name: str, data: dict):
 async def api_companion_list_models(backend: str):
     """Список моделей из models_dir для заданного бэкенда (llama/vllm)."""
     import configparser
-    base_ini = COMPANION.OVERRIDE_SYMLINK.parent / "base.ini"
+    voice_robot = COMPANION.OVERRIDE_SYMLINK.parent
+    base_ini = voice_robot / "base.ini"
     if not base_ini.is_file():
         return {"models": []}
     cfg = configparser.ConfigParser(interpolation=None)
@@ -395,7 +396,12 @@ async def api_companion_list_models(backend: str):
     models_dir_raw = cfg.get(section, "models_dir", fallback="")
     if not models_dir_raw:
         return {"models": []}
-    models_dir = Path(os.path.expanduser(models_dir_raw))
+    # Resolve relative to voice_robot, absolute as-is
+    p = Path(models_dir_raw)
+    if p.is_absolute():
+        models_dir = p
+    else:
+        models_dir = (voice_robot / p).resolve()
     if not models_dir.is_dir():
         return {"models": []}
     try:

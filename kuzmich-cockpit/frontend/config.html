@@ -254,8 +254,10 @@
   function renderForm(){
     editorContent.innerHTML = '';
     const fields = EDITABLE[currentMode] || {};
-    const backendVal = (overrides.ai && overrides.ai.backend)
-      || (baseDefaults.ai && baseDefaults.ai.backend) || 'llama';
+    const rawBackend = (overrides.ai && overrides.ai.backend)
+      || (baseDefaults.ai && baseDefaults.ai.backend) || '';
+    const backendOptions = currentMode === 'internal' ? ['llama','vllm'] : ['openai'];
+    const backendVal = backendOptions.includes(rawBackend) ? rawBackend : backendOptions[0];
     const showSection = currentMode === 'internal' ? backendVal : null;
 
     Object.keys(fields).forEach(section => {
