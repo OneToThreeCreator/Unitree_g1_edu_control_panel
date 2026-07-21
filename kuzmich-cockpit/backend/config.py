@@ -49,7 +49,7 @@ class Config:
     move_repeat_s: float = 0.05          # 20 Гц, как в v3_motion
     move_ttl_s: float = 0.55             # нет свежих команд -> нули
     max_vx: float = 0.30
-    max_vy: float = 0.10
+    max_vy: float = 0.30
     max_vyaw: float = 0.40
 
     # --- Руки (arm keyframe player) ---
