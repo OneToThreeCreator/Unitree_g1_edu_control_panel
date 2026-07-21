@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Файловый менеджер</title>
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/files.css">
+</head>
+<body>
+<header>
+  <h1>📁 ФАЙЛОВЫЙ МЕНЕДЖЕР</h1>
+  <div class="spacer"></div>
+  <a href="/" class="back-btn">← На главную</a>
+</header>
+<main>
+  <div class="sidebar">
+    <div class="breadcrumb" id="breadcrumb"></div>
+    <div class="file-list" id="fileList"></div>
+    <div id="status" class="status hidden"></div>
+    <div class="sidebar-actions">
+      <button id="newFileBtn">+ Файл</button>
+      <button id="newDirBtn">+ Папка</button>
+      <button id="uploadBtn">↑ Загрузить</button>
+      <input type="file" id="uploadInput" class="upload-input">
+    </div>
+  </div>
+  <div class="editor">
+    <div class="editor-header" id="editorHeader" style="display:none">
+      <input id="fileNameInput" class="file-name-input" type="text" placeholder="имя файла" />
+      <span class="file-meta" id="fileMeta"></span>
+      <span id="dirtyIndicator" class="dirty-indicator"></span>
+    </div>
+    <textarea id="editorArea" class="editor-area" style="display:none" spellcheck="false" placeholder="Содержимое файла…"></textarea>
+    <div class="preview-empty" id="previewEmpty">Выберите файл или создайте новый</div>
+    <div id="runOutput"></div>
+    <div class="actions" id="editorActions" style="display:none">
+      <button id="saveBtn" class="primary">💾 Сохранить</button>
+      <button id="downloadBtn">⬇ Скачать</button>
+      <button id="deleteBtn" class="danger">🗑 Удалить</button>
+      <button id="runBtn" style="display:none">▶ Запустить</button>
+    </div>
+  </div>
+</main>
+
+<script src="js/base.js"></script>
+<script src="js/editor.js"></script>
+<script>
+'use strict';
+(function(){
+  const breadcrumb = $('#breadcrumb');
+  const fileList = $('#fileList');
+  const editorArea = $('#editorArea');
+  const previewEmpty = $('#previewEmpty');
+  const editorHeader = $('#editorHeader');
+  const editorActions = $('#editorActions');
+  const fileNameInput = $('#fileNameInput');
+  const fileMeta = $('#fileMeta');
+  const dirtyIndicator = $('#dirtyIndicator');
+  const runOutput = $('#runOutput');
+  const statusDiv = $('#status');
+  const uploadInput = $('#uploadInput');
+
+  let currentPath = '';
+  let selectedItem = null;
+
+  const ed = new SidebarEditor({
+    nameInput: fileNameInput,
+    contentArea: editorArea,
+    dirtyIndicator, statusDiv,
+    saveBtn: $('#saveBtn'),
+    deleteBtn: $('#deleteBtn'),
+    editorEl: editorHeader,
+    emptyEl: previewEmpty,
+    actionsEl: editorActions
+  });
+
+  // Override: showEditor for files-specific elements
+  ed.showEditor = () => {
+    previewEmpty.style.display = 'none';
+    editorHeader.style.display = 'flex';
+    editorArea.style.display = 'block';
+    editorActions.style.display = 'flex';
+  };
+
+  // Override: hideEditor for files-specific elements
+  ed.hideEditor = () => {
+    editorArea.style.display = 'none';
+    previewEmpty.style.display = 'flex';
+    editorHeader.style.display = 'none';
+    editorActions.style.display = 'none';
+    runOutput.innerHTML = '';
+    dirtyIndicator.textContent = '';
+    ed.isNew = false;
+  };
+
+  function formatSize(bytes){
+    if(bytes < 1024) return bytes + ' Б';
+    if(bytes < 1024*1024) return (bytes/1024).toFixed(1) + ' КБ';
+    return (bytes/(1024*1024)).toFixed(1) + ' МБ';
+  }
+
+  function getIcon(item){
+    if(item.is_dir) return '📁';
+    const ext = item.name.split('.').pop().toLowerCase();
+    const icons = {
+      py:'🐍', js:'📜', html:'🌐', css:'🎨', json:'📋', ini:'⚙',
+      md:'📝', txt:'📄', jpg:'🖼', jpeg:'🖼', png:'🖼', gif:'🖼',
+      mp4:'🎬', mp3:'🎵', wav:'🎵', sh:'🔧', yml:'📋', yaml:'📋',
+      toml:'📋', csv:'📊', log:'📋', pyc:'🔒', pycache:'🔒'
+    };
+    return icons[ext] || '📄';
+  }
+
+  async function loadDir(path){
+    currentPath = path || '';
+    selectedItem = null;
+    ed.isNew = false;
+    ed.hideEditor();
+    renderBreadcrumb();
+    try {
+      const res = await fetch('/api/files/list?path=' + encodeURIComponent(currentPath));
+      if(!res.ok) throw new Error('Ошибка загрузки');
+      const data = await res.json();
+      renderFileList(data.items || []);
+    } catch(e){
+      ed.showMsg('Ошибка: ' + e.message, 'err');
+      fileList.innerHTML = '';
+    }
+  }
+
+  function renderBreadcrumb(){
+    breadcrumb.innerHTML = '';
+    const parts = currentPath ? currentPath.split('/').filter(Boolean) : [];
+    const root = document.createElement('span');
+    root.textContent = '📁 Проект';
+    root.onclick = () => loadDir('');
+    breadcrumb.appendChild(root);
+    let accumulated = '';
+    parts.forEach(part => {
+      accumulated += (accumulated ? '/' : '') + part;
+      const sep = document.createElement('span');
+      sep.textContent = ' / ';
+      breadcrumb.appendChild(sep);
+      const crumb = document.createElement('span');
+      crumb.textContent = part;
+      const p = accumulated;
+      if(part === parts[parts.length - 1]){
+        crumb.className = 'current';
+      } else {
+        crumb.onclick = () => loadDir(p);
+      }
+      breadcrumb.appendChild(crumb);
+    });
+  }
+
+  function renderFileList(items){
+    fileList.innerHTML = '';
+    if(items.length === 0){
+      fileList.innerHTML = '<div style="color:var(--dim);font-size:13px;padding:12px;text-align:center">Папка пуста</div>';
+      return;
+    }
+    items.forEach(item => {
+      const div = document.createElement('div');
+      div.className = 'file-item' + (item.is_dir ? ' is-dir' : ' is-file');
+      div.innerHTML = '<span class="icon">' + getIcon(item) + '</span>'
+        + '<span class="name">' + escapeHtml(item.name) + '</span>'
+        + '<span class="size">' + (item.is_dir ? '' : formatSize(item.size)) + '</span>';
+      div.onclick = () => {
+        if(ed.isDirty()){
+          if(!confirm('Есть несохранённые изменения. Продолжить без сохранения?')) return;
+        }
+        document.querySelectorAll('.file-item').forEach(el => el.classList.remove('active'));
+        div.classList.add('active');
+        selectedItem = item;
+        if(item.is_dir){
+          loadDir(item.path);
+        } else {
+          openFile(item);
+        }
+      };
+      fileList.appendChild(div);
+    });
+  }
+
+  async function openFile(item){
+    ed.showEditor();
+    editorArea.value = 'Загрузка…';
+    editorArea.disabled = true;
+    runOutput.innerHTML = '';
+    fileMeta.textContent = formatSize(item.size);
+    $('#runBtn').style.display = item.name.endsWith('.py') ? '' : 'none';
+    try {
+      const res = await fetch('/api/files/read?path=' + encodeURIComponent(item.path));
+      if(!res.ok){
+        if(res.status === 400){
+          editorArea.value = 'Файл не является текстовым или кодировка не поддерживается';
+          editorArea.disabled = true;
+          ed.hideEditor();
+          previewEmpty.style.display = 'flex';
+          previewEmpty.textContent = 'Файл не является текстовым или кодировка не поддерживается';
+          return;
+        }
+        throw new Error('Ошибка чтения');
+      }
+      const data = await res.json();
+      editorArea.value = data.content || '';
+      editorArea.disabled = false;
+      ed.load(item.name, editorArea.value);
+      fileMeta.textContent = formatSize(item.size);
+    } catch(e){
+      editorArea.value = 'Ошибка: ' + e.message;
+      editorArea.disabled = true;
+      ed.hideEditor();
+      previewEmpty.style.display = 'flex';
+      previewEmpty.textContent = 'Ошибка: ' + e.message;
+    }
+  }
+
+  ed.bindAll({
+    saveFn: async (name, content, isNew) => {
+      const savePath = isNew
+        ? (currentPath ? currentPath + '/' + name : name)
+        : selectedItem.path;
+      const res = await fetch('/api/files/save', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({path: savePath, content: content})
+      });
+      if(!res.ok){ const err = await res.json(); throw new Error(err.detail || 'Ошибка'); }
+    },
+    renameFn: async (oldName, newName) => {
+      const res = await fetch('/api/files/rename', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({path: selectedItem.path, new_name: newName})
+      });
+      if(!res.ok){ const err = await res.json(); throw new Error(err.detail || 'Ошибка'); }
+      const parts = selectedItem.path.split('/');
+      parts[parts.length - 1] = newName;
+      selectedItem.path = parts.join('/');
+      selectedItem.name = newName;
+    },
+    afterSave: () => { fileMeta.textContent = formatSize(editorArea.value.length); loadDir(currentPath); },
+    deleteFn: async () => {
+      const res = await fetch('/api/files/delete?path=' + encodeURIComponent(selectedItem.path), {
+        method: 'DELETE'
+      });
+      if(!res.ok){ const err = await res.json(); throw new Error(err.detail || 'Ошибка'); }
+    },
+    afterDelete: () => loadDir(currentPath)
+  });
+
+  $('#newFileBtn').onclick = () => {
+    if(ed.isDirty()){
+      if(!confirm('Есть несохранённые изменения. Продолжить без сохранения?')) return;
+    }
+    selectedItem = null;
+    ed.startNew();
+    fileMeta.textContent = 'Новый файл';
+    $('#runBtn').style.display = 'none';
+  };
+
+  $('#newDirBtn').onclick = async () => {
+    const name = prompt('Имя новой папки:');
+    if(!name) return;
+    try {
+      const res = await fetch('/api/files/mkdir', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({path: currentPath, name: name})
+      });
+      if(!res.ok){ const err = await res.json(); throw new Error(err.detail || 'Ошибка'); }
+      ed.showMsg('Папка "' + name + '" создана', 'ok');
+      loadDir(currentPath);
+    } catch(e){ ed.showMsg('Ошибка: ' + e.message, 'err'); }
+  };
+
+  $('#uploadBtn').onclick = () => uploadInput.click();
+  uploadInput.onchange = async () => {
+    const file = uploadInput.files[0];
+    if(!file) return;
+    const fd = new FormData();
+    fd.append('file', file);
+    try {
+      const res = await fetch('/api/files/upload?path=' + encodeURIComponent(currentPath), {
+        method: 'POST', body: fd
+      });
+      if(!res.ok){ const err = await res.json(); throw new Error(err.detail || 'Ошибка'); }
+      ed.showMsg('Файл "' + file.name + '" загружен', 'ok');
+      uploadInput.value = '';
+      loadDir(currentPath);
+    } catch(e){ ed.showMsg('Ошибка: ' + e.message, 'err'); }
+  };
+
+  $('#downloadBtn').onclick = () => {
+    if(!selectedItem || ed.isNew) return;
+    window.open('/api/files/download?path=' + encodeURIComponent(selectedItem.path), '_blank');
+  };
+
+  $('#runBtn').onclick = async () => {
+    if(!selectedItem || !selectedItem.name.endsWith('.py')) return;
+    if(!confirm('Запустить "' + selectedItem.name + '"?')) return;
+    runOutput.innerHTML = '<div style="color:var(--dim);font-size:13px">Выполнение…</div>';
+    try {
+      const res = await fetch('/api/files/run', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({path: selectedItem.path, args: []})
+      });
+      if(!res.ok){ const err = await res.json(); throw new Error(err.detail || 'Ошибка'); }
+      const data = await res.json();
+      runOutput.innerHTML = '';
+      if(data.stdout){
+        const div = document.createElement('div');
+        div.className = 'preview-stdout';
+        div.textContent = data.stdout;
+        runOutput.appendChild(div);
+      }
+      if(data.stderr){
+        const div = document.createElement('div');
+        div.className = 'preview-stderr';
+        div.textContent = data.stderr;
+        runOutput.appendChild(div);
+      }
+      if(!data.stdout && !data.stderr){
+        runOutput.innerHTML = '<div style="color:var(--dim);font-size:13px">Нет вывода</div>';
+      }
+    } catch(e){
+      runOutput.innerHTML = '<div class="preview-stderr">' + escapeHtml(e.message) + '</div>';
+    }
+  };
+
+  // -------- Старт --------
+  loadDir('');
+})();
+</script>
+</body>
+</html>

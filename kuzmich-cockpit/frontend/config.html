@@ -1,0 +1,547 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Редактор конфигурации ИИ</title>
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/config.css">
+</head>
+<body>
+<header>
+  <h1>⚙ Конфигурация ИИ</h1>
+  <div class="mode-tabs">
+    <button id="tabInternal" class="active">Внутренняя</button>
+    <button id="tabExternal">Внешняя</button>
+  </div>
+  <div class="spacer"></div>
+  <a href="/" class="back-btn">← На главную</a>
+</header>
+<main>
+  <div class="sidebar">
+    <h2>Конфиги</h2>
+    <div id="configList"></div>
+    <div id="status" class="status hidden"></div>
+  </div>
+  <div class="editor" id="editorPanel">
+    <div class="editor-empty" id="editorEmpty">Выберите конфиг слева или создайте новый</div>
+    <div id="editorTop" style="display:none;gap:10px;align-items:center;margin-bottom:8px">
+      <label style="font-size:13px;color:var(--dim)">Имя:</label>
+      <input id="configNameInput" type="text" style="flex:1;background:#0f1418;color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:6px 10px;font:inherit;font-size:14px" placeholder="имя файла" />
+      <span id="dirtyIndicator" style="font-size:13px;color:var(--warn);font-weight:600"></span>
+    </div>
+    <div id="editorContent" style="display:none;flex-direction:column;gap:12px;flex:1;overflow-y:auto"></div>
+    <div class="actions" id="editorActions" style="display:none">
+      <button id="newBtn">Новый</button>
+      <button class="primary" id="saveBtn">Сохранить</button>
+      <button id="selectBtn">Выбрать</button>
+      <button id="resetBtn">Сбросить все</button>
+      <button class="danger" id="deleteBtn">Удалить</button>
+      <button id="rawToggle" class="raw-toggle">RAW</button>
+      <div class="spacer"></div>
+      <span id="activeBadge" class="active-badge" style="display:none">Активен</span>
+    </div>
+    <div class="raw-editor" id="rawEditor">
+      <textarea id="rawTextarea" spellcheck="false"></textarea>
+    </div>
+  </div>
+</main>
+
+<script src="js/base.js"></script>
+<script src="js/editor.js"></script>
+<script src="js/ini-parser.js"></script>
+<script src="js/model-fetcher.js"></script>
+<script>
+'use strict';
+(function(){
+  const configList = $('#configList');
+  const editorContent = $('#editorContent');
+  const editorEmpty = $('#editorEmpty');
+  const editorActions = $('#editorActions');
+  const editorTop = $('#editorTop');
+  const configNameInput = $('#configNameInput');
+  const dirtyIndicator = $('#dirtyIndicator');
+  const rawEditor = $('#rawEditor');
+  const rawTextarea = $('#rawTextarea');
+  const rawToggle = $('#rawToggle');
+  const statusDiv = $('#status');
+  const activeBadge = $('#activeBadge');
+
+  let currentMode = 'internal';
+  let baseDefaults = {};
+  let overrides = {};
+  let originalOverrides = {};
+  let rawMode = false;
+
+  const ed = new SidebarEditor({
+    nameInput: configNameInput,
+    contentArea: rawTextarea,
+    dirtyIndicator, statusDiv,
+    saveBtn: $('#saveBtn'),
+    deleteBtn: $('#deleteBtn'),
+    editorEl: editorContent,
+    emptyEl: editorEmpty,
+    actionsEl: editorActions
+  });
+
+  // Override: content is serialized overrides
+  ed.getContent = () => rawMode ? rawTextarea.value : serializeOverride(overrides);
+
+  // Override: dirty = name changed OR overrides changed
+  ed.isDirty = () => {
+    const nameChanged = configNameInput.value.trim() !== ed.originalName;
+    const overridesChanged = JSON.stringify(overrides) !== JSON.stringify(originalOverrides);
+    if (ed.isNew) return configNameInput.value.trim() !== '' || overridesChanged;
+    return nameChanged || overridesChanged;
+  };
+
+  // Override: hideEditor for config-specific elements
+  ed.hideEditor = () => {
+    editorContent.style.display = 'none';
+    editorEmpty.style.display = 'flex';
+    editorActions.style.display = 'none';
+    editorTop.style.display = 'none';
+    rawEditor.style.display = 'none';
+    rawToggle.textContent = 'RAW';
+    dirtyIndicator.textContent = '';
+    ed.isNew = false;
+  };
+
+  // Override: showEditor for config-specific elements
+  ed.showEditor = () => {
+    editorEmpty.style.display = 'none';
+    editorContent.style.display = 'flex';
+    editorActions.style.display = 'flex';
+    editorTop.style.display = 'flex';
+  };
+
+  const EDITABLE = {
+    'internal': {
+      'ai': [
+        {key:'backend',label:'Backend',type:'select',options:['llama','vllm']},
+        {key:'model',label:'Модель',type:'model_select'},
+        {key:'temperature',label:'Температура'},
+        {key:'max_tokens',label:'Макс. токенов'}
+      ],
+      'realtime': [
+        {key:'realtime_url',label:'Realtime URL'},
+        {key:'voice',label:'Voice'},
+        {key:'model',label:'Модель RT'},
+        {key:'max_session_turns',label:'Макс. сессий'}
+      ],
+      'llama': [{key:'ctx_size',label:'Размер контекста'},{key:'gpu_layers',label:'GPU слои (-1=all)'}],
+      'vllm':  [{key:'gpu_memory_utilization',label:'GPU память (%)'},{key:'max_model_len',label:'Макс. длина модели'}],
+    },
+    'external': {
+      'ai': [
+        {key:'backend',label:'Backend',type:'select',options:['openai']},
+        {key:'base_url',label:'Base URL'},
+        {key:'api_key',label:'API ключ'},
+        {key:'model',label:'Модель'},
+        {key:'temperature',label:'Температура'},
+        {key:'max_tokens',label:'Макс. токенов'}
+      ],
+      'realtime': [
+        {key:'realtime_url',label:'Realtime URL'},
+        {key:'voice',label:'Voice'},
+        {key:'api_key',label:'API ключ RT'},
+        {key:'model',label:'Модель RT'},
+        {key:'max_session_turns',label:'Макс. сессий'}
+      ],
+    },
+  };
+
+  $('#tabInternal').onclick = () => setMode('internal');
+  $('#tabExternal').onclick = () => setMode('external');
+
+  async function setMode(mode){
+    currentMode = mode;
+    ed.current = null;
+    ed.originalName = '';
+    rawMode = false;
+    overrides = {};
+    originalOverrides = {};
+    $('#tabInternal').classList.toggle('active', mode === 'internal');
+    $('#tabExternal').classList.toggle('active', mode === 'external');
+    ed.hideEditor();
+    loadConfigList();
+    try {
+      const st = await fetch('/api/companion/status');
+      const stData = await st.json();
+      const lastCfg = stData.last_config && stData.last_config[mode];
+      if(lastCfg){
+        const configs = await (await fetch('/api/companion/configs/' + mode)).json();
+        if((configs.configs || []).includes(lastCfg)){
+          loadConfig(lastCfg);
+          return;
+        }
+      }
+    } catch(e){}
+  }
+
+  async function loadDefaults(){
+    try {
+      const res = await fetch('/api/companion/base_config');
+      if(!res.ok) return;
+      const data = await res.json();
+      baseDefaults = {};
+      (data.sections || []).forEach(s => {
+        baseDefaults[s.name] = {};
+        s.items.forEach(item => { baseDefaults[s.name][item.key] = item.value; });
+      });
+    } catch(e){}
+  }
+
+  async function loadConfigList(){
+    try {
+      const res = await fetch('/api/companion/configs/' + currentMode);
+      const data = await res.json();
+      const names = data.configs || [];
+      let activeName = null;
+      try {
+        const st = await fetch('/api/companion/status');
+        const stData = await st.json();
+        activeName = stData.last_config && stData.last_config[currentMode] || null;
+      } catch(e){}
+
+      configList.innerHTML = '';
+      if(names.length === 0){
+        configList.innerHTML = '<div style="color:var(--dim);font-size:13px;padding:8px">Нет конфигов</div>';
+        return;
+      }
+      names.forEach(name => {
+        const div = document.createElement('div');
+        div.className = 'config-item' + (name === ed.current ? ' active' : '');
+        div.textContent = name;
+        if(name === activeName){
+          const badge = document.createElement('span');
+          badge.className = 'badge';
+          badge.textContent = '\u25cf';
+          badge.style.color = 'var(--ok)';
+          div.appendChild(badge);
+        }
+        div.onclick = () => {
+          if(ed.isDirty() && !confirm('Есть несохранённые изменения. Продолжить?')) return;
+          loadConfig(name);
+        };
+        configList.appendChild(div);
+      });
+    } catch(e){ ed.showMsg('Ошибка: ' + e.message, 'err'); }
+  }
+
+  async function loadConfig(name){
+    try {
+      const res = await fetch('/api/companion/config/' + currentMode + '/get/' + encodeURIComponent(name));
+      if(!res.ok) throw new Error('Не найден');
+      const data = await res.json();
+      overrides = parseOverride(data.content || '');
+      originalOverrides = JSON.parse(JSON.stringify(overrides));
+      rawMode = false;
+      rawToggle.textContent = 'RAW';
+      rawEditor.style.display = 'none';
+      ed.load(name, serializeOverride(overrides));
+      renderForm();
+      ed.showEditor();
+      loadConfigList();
+      try {
+        const st = await fetch('/api/companion/status');
+        const stData = await st.json();
+        activeBadge.style.display = (stData.mode === currentMode && stData.config === name) ? '' : 'none';
+      } catch(e){ activeBadge.style.display = 'none'; }
+    } catch(e){ ed.showMsg('Ошибка: ' + e.message, 'err'); }
+  }
+
+  function renderForm(){
+    editorContent.innerHTML = '';
+    const fields = EDITABLE[currentMode] || {};
+    const backendVal = (overrides.ai && overrides.ai.backend)
+      || (baseDefaults.ai && baseDefaults.ai.backend) || 'llama';
+    const showSection = currentMode === 'internal' ? backendVal : null;
+
+    Object.keys(fields).forEach(section => {
+      if(currentMode === 'internal' && (section === 'llama' || section === 'vllm')){
+        if(section !== showSection) return;
+      }
+      const items = fields[section];
+      if(!items || items.length === 0) return;
+
+      const card = document.createElement('div');
+      card.className = 'section-card';
+      const h3 = document.createElement('h3');
+      h3.textContent = '[' + section + ']';
+      card.appendChild(h3);
+
+      items.forEach(field => {
+        const defaultVal = (baseDefaults[section] && baseDefaults[section][field.key]) || '';
+        const overrideVal = overrides[section] && overrides[section][field.key];
+        const currentVal = overrideVal !== undefined ? overrideVal : defaultVal;
+        const isOverridden = overrideVal !== undefined;
+
+        const row = document.createElement('div');
+        row.className = 'field';
+        const label = document.createElement('label');
+        label.textContent = field.label;
+        row.appendChild(label);
+
+        const hint = document.createElement('span');
+        hint.className = 'hint';
+        const updateHint = () => {
+          const ov = overrides[section] && overrides[section][field.key] !== undefined;
+          hint.style.cssText = 'font-size:11px;color:' + (ov ? 'var(--warn)' : 'var(--dim)') + ';min-width:70px;text-align:right;flex-shrink:0;cursor:' + (ov ? 'pointer' : 'default');
+          hint.title = ov ? 'Нажмите чтобы сбросить к дефолту' : 'Уже используется значение по умолчанию';
+          hint.textContent = '\u2190 ' + (defaultVal || '—');
+          return ov;
+        };
+        updateHint();
+        hint.onclick = () => {
+          const currentlyOverridden = overrides[section] && overrides[section][field.key] !== undefined;
+          if(!currentlyOverridden) return;
+          if(field.type === 'select'){
+            overrides[section][field.key] = field.options[0];
+          } else if(field.type === 'model_select'){
+            delete overrides[section][field.key];
+            fetchModels(backendVal).then(models => {
+              if(models.length > 0) overrides[section][field.key] = models[0];
+              if(Object.keys(overrides[section]).length === 0) delete overrides[section];
+              renderForm();
+              ed.updateDirty();
+            });
+            return;
+          } else {
+            delete overrides[section][field.key];
+            if(Object.keys(overrides[section]).length === 0) delete overrides[section];
+          }
+          renderForm();
+          ed.updateDirty();
+        };
+
+        let inp;
+
+        if(field.type === 'select'){
+          inp = document.createElement('select');
+          field.options.forEach(opt => {
+            const o = document.createElement('option');
+            o.value = opt; o.textContent = opt;
+            if(opt === currentVal) o.selected = true;
+            inp.appendChild(o);
+          });
+          inp.addEventListener('change', () => {
+            if(!overrides[section]) overrides[section] = {};
+            overrides[section][field.key] = inp.value;
+            updateHint();
+            ed.updateDirty();
+            if(field.key === 'backend') renderForm();
+          });
+        } else if(field.type === 'model_select'){
+          inp = document.createElement('select');
+          const optDefault = document.createElement('option');
+          optDefault.value = ''; optDefault.textContent = '— из базового —';
+          if(!currentVal) optDefault.selected = true;
+          inp.appendChild(optDefault);
+          fetchModels(backendVal).then(models => {
+            while(inp.options.length > 1) inp.remove(1);
+            models.forEach(m => {
+              const o = document.createElement('option');
+              o.value = m; o.textContent = m;
+              if(m === currentVal) o.selected = true;
+              inp.appendChild(o);
+            });
+          });
+          inp.addEventListener('change', () => {
+            if(!overrides[section]) overrides[section] = {};
+            if(inp.value){
+              overrides[section][field.key] = inp.value;
+            } else {
+              delete overrides[section][field.key];
+              if(Object.keys(overrides[section]).length === 0) delete overrides[section];
+            }
+            updateHint();
+            ed.updateDirty();
+          });
+        } else {
+          const val = currentVal.trim().toLowerCase();
+          if(val === 'true' || val === 'false'){
+            inp = document.createElement('input');
+            inp.type = 'checkbox';
+            inp.checked = val === 'true';
+            inp.addEventListener('change', () => {
+              if(!overrides[section]) overrides[section] = {};
+              overrides[section][field.key] = inp.checked ? 'true' : 'false';
+              updateHint();
+              ed.updateDirty();
+            });
+          } else if(/^-?\d+$/.test(val)){
+            inp = document.createElement('input');
+            inp.type = 'number';
+            inp.value = currentVal;
+            inp.addEventListener('input', () => {
+              if(!overrides[section]) overrides[section] = {};
+              overrides[section][field.key] = inp.value;
+              updateHint();
+              ed.updateDirty();
+            });
+          } else if(/^-?\d+\.\d+$/.test(val)){
+            inp = document.createElement('input');
+            inp.type = 'number';
+            inp.step = '0.01';
+            inp.value = currentVal;
+            inp.addEventListener('input', () => {
+              if(!overrides[section]) overrides[section] = {};
+              overrides[section][field.key] = inp.value;
+              updateHint();
+              ed.updateDirty();
+            });
+          } else {
+            inp = document.createElement('input');
+            inp.type = 'text';
+            inp.value = currentVal;
+            inp.addEventListener('input', () => {
+              if(!overrides[section]) overrides[section] = {};
+              overrides[section][field.key] = inp.value;
+              updateHint();
+              ed.updateDirty();
+            });
+          }
+        }
+
+        inp.style.flex = '1';
+        row.appendChild(inp);
+        row.appendChild(hint);
+
+        card.appendChild(row);
+      });
+
+      editorContent.appendChild(card);
+    });
+  }
+
+  rawToggle.onclick = () => {
+    rawMode = !rawMode;
+    if(rawMode){
+      rawTextarea.value = serializeOverride(overrides);
+      editorContent.style.display = 'none';
+      rawEditor.style.display = 'block';
+      rawToggle.textContent = 'Форма';
+    } else {
+      overrides = parseOverride(rawTextarea.value);
+      rawEditor.style.display = 'none';
+      editorContent.style.display = 'flex';
+      rawToggle.textContent = 'RAW';
+      renderForm();
+      ed.updateDirty();
+    }
+  };
+
+  ed.bindAll({
+    saveFn: async (name, content) => {
+      if(ed.current === null){
+        const configs = await (await fetch('/api/companion/configs/' + currentMode)).json();
+        if((configs.configs || []).includes(name)){
+          if(!confirm('Файл "' + name + '" уже существует. Перезаписать?')) throw new Error('Отменено');
+        } else {
+          const res = await fetch('/api/companion/config/' + currentMode + '/create', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ name: name })
+          });
+          if(!res.ok){ const err = await res.json(); throw new Error(err.detail || 'Ошибка создания'); }
+        }
+      }
+      const saveRes = await fetch('/api/companion/config/' + currentMode + '/save/' + encodeURIComponent(name), {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ content })
+      });
+      if(!saveRes.ok){ const err = await saveRes.json(); throw new Error(err.detail || 'Ошибка сохранения'); }
+    },
+    renameFn: async (oldName, newName) => {
+      const res = await fetch('/api/companion/config/' + currentMode + '/rename/' + encodeURIComponent(oldName), {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ new_name: newName })
+      });
+      if(!res.ok){ const err = await res.json(); throw new Error(err.detail || 'Ошибка переименования'); }
+    },
+    afterSave: () => { originalOverrides = JSON.parse(JSON.stringify(overrides)); loadConfigList(); },
+    deleteFn: async (name) => {
+      const res = await fetch('/api/companion/config/' + currentMode + '/delete/' + encodeURIComponent(name), { method: 'DELETE' });
+      if(!res.ok){ const err = await res.json(); throw new Error(err.detail || 'Ошибка'); }
+    },
+    afterDelete: async () => {
+      const data = await (await fetch('/api/companion/configs/' + currentMode)).json();
+      const names = data.configs || [];
+      if (names.length > 0) {
+        loadConfig(names[0]);
+      } else {
+        loadConfigList();
+      }
+    }
+  });
+
+  $('#newBtn').onclick = () => {
+    if(ed.isDirty() && !confirm('Есть несохранённые изменения. Продолжить?')) return;
+    ed.current = null;
+    ed.originalName = '';
+    ed.isNew = true;
+    configNameInput.value = '';
+    overrides = {};
+    originalOverrides = {};
+    rawMode = false;
+    rawEditor.style.display = 'none';
+    editorContent.style.display = 'flex';
+    renderForm();
+    ed.showEditor();
+    dirtyIndicator.textContent = '';
+    document.querySelectorAll('.config-item').forEach(el => el.classList.remove('active'));
+  };
+
+  $('#resetBtn').onclick = () => {
+    if(!ed.current) return;
+    overrides = JSON.parse(JSON.stringify(originalOverrides));
+    rawMode = false;
+    rawEditor.style.display = 'none';
+    editorContent.style.display = 'flex';
+    rawToggle.textContent = 'RAW';
+    ed.load(ed.current, serializeOverride(overrides));
+    renderForm();
+    ed.updateDirty();
+  };
+
+  $('#selectBtn').onclick = async () => {
+    if(!ed.current){ ed.showMsg('Сначала выберите конфиг', 'err'); return; }
+    try {
+      const res = await fetch('/api/companion/select', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ mode: currentMode, config: ed.current })
+      });
+      const d = await res.json();
+      if(!res.ok || !d.ok) throw new Error(d.message || d.detail || 'Ошибка');
+      ed.showMsg(ed.current + ' выбран', 'ok');
+      activeBadge.style.display = '';
+      document.querySelectorAll('.config-item').forEach(el => {
+        const isTarget = el.textContent.trim() === ed.current;
+        const wasActive = el.querySelector('.badge');
+        if(wasActive) wasActive.remove();
+        if(isTarget && ed.current){
+          const badge = document.createElement('span');
+          badge.className = 'badge';
+          badge.textContent = '\u25cf';
+          badge.style.color = 'var(--ok)';
+          el.appendChild(badge);
+        }
+      });
+    } catch(e){ ed.showMsg(e.message, 'err'); }
+  };
+
+  (async function init(){
+    await loadDefaults();
+    try {
+      const st = await fetch('/api/companion/status');
+      const stData = await st.json();
+      const mode = (stData.mode === 'internal' || stData.mode === 'external') ? stData.mode : 'internal';
+      await setMode(mode);
+      return;
+    } catch(e){}
+    loadConfigList();
+  })();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,28 @@
+.mode-tabs{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.mode-tabs button{background:var(--panel2);color:var(--dim);border:0;padding:7px 14px;cursor:pointer;font:inherit;font-size:13px}
+.mode-tabs button.active{background:var(--accent);color:#fff}
+main{flex:1;display:flex;gap:20px;padding:20px;overflow:hidden}
+.sidebar{width:240px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:10px;overflow-y:auto}
+.sidebar h2{font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--dim);margin:0}
+.config-item{padding:8px 10px;border-radius:6px;cursor:pointer;font-size:13px;border:1px solid transparent}
+.config-item:hover{background:var(--panel2);border-color:var(--line)}
+.config-item.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+.config-item .badge{font-size:10px;color:var(--dim);margin-left:8px}
+.editor{flex:1;display:flex;flex-direction:column;gap:12px;overflow-y:auto}
+.editor-empty{display:flex;align-items:center;justify-content:center;height:100%;color:var(--dim);font-size:14px}
+.section-card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px}
+.section-card h3{margin:0 0 10px;font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--accent);font-weight:700}
+.field{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.field label{font-size:12px;color:var(--dim);width:160px;text-align:right;flex-shrink:0}
+.field input[type=text],.field input[type=number],.field select{flex:1;background:#0f1418;color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:6px 10px;font:inherit;font-size:13px}
+.field input[type=checkbox]{width:auto;accent-color:var(--accent)}
+.actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:10px 0}
+.actions button{padding:8px 16px;border:1px solid var(--line);border-radius:6px;background:var(--panel2);color:var(--txt);cursor:pointer;font:inherit;font-size:13px}
+.actions button:hover{border-color:var(--accent)}
+.actions button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+.actions button.danger{background:var(--err);color:#fff;border-color:var(--err)}
+.active-badge{font-size:11px;padding:3px 8px;border-radius:20px;background:var(--ok);color:#000;font-weight:600}
+.raw-toggle{font-size:12px;color:var(--dim);cursor:pointer;text-decoration:underline}
+.raw-toggle:hover{color:var(--accent)}
+.raw-editor{display:none;width:100%;flex:1}
+.raw-editor textarea{width:100%;height:100%;background:#0f1418;color:var(--txt);border:1px solid var(--line);border-radius:7px;padding:10px;font:inherit;resize:none;font-size:13px;line-height:1.5;font-family:ui-monospace,Menlo,Consolas,monospace}

@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Кузьмич · Единый пульт</title>
+<link rel="stylesheet" href="css/base.css">
+<link rel="stylesheet" href="css/index.css">
+</head>
+<body>
+<header>
+  <h1>🤖 КУЗЬМИЧ</h1>
+  <span class="badge"><span id="conn" class="dot"></span> <span id="connt">нет связи</span></span>
+  <span id="dry" class="badge dry" style="display:none">DRY-RUN (без робота)</span>
+  <a href="/prompts.html" class="back-btn" style="margin-left:10px">Промты ИИ</a>
+  <a href="/config.html" class="back-btn">Конфигурация ИИ</a>
+  <a href="/files.html" class="back-btn">Файлы</a>
+  <div class="spacer"></div>
+  <div class="modes">
+    <button id="mManual" class="active">Ручной пульт</button>
+    <button id="mTeleop">VR-телеоп</button>
+  </div>
+  <button id="estop">СТОП ⛔</button>
+</header>
+
+<main>
+  <!-- ЛЕВО: видео + телеметрия -->
+  <div class="col">
+    <div class="card">
+      <h2>Видео оператора</h2>
+      <div class="video">
+        <img id="feed" alt="" style="display:none">
+        <div id="feedph" class="ph">Нет видеопотока.<br>В dry-run камера недоступна.</div>
+      </div>
+      <div class="tel">
+        <div><span>vx (вперёд)</span><b id="tvx">0.00</b></div>
+        <div><span>vy (вбок)</span><b id="tvy">0.00</b></div>
+        <div><span>wz (поворот)</span><b id="twz">0.00</b></div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button class="act" id="camRetry">↻ Подключить видео</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ЦЕНТР: движение -->
+  <div class="col">
+    <div class="card">
+      <h2>Движение</h2>
+      <div id="pad" class="pad"><div class="stick"></div><div class="center-mark"></div><div class="knob"></div></div>
+      <div class="hint">Тяни джойстик · клавиши W A S D · Q/E — вбок · пробел — стоп</div>
+      <div class="slider">
+        <label>Скорость</label>
+        <input id="spd" type="range" min="10" max="100" value="60">
+        <b id="spdv">60%</b>
+      </div>
+      <button class="act wide" id="stopBtn">СТОП движения</button>
+      <div id="lockMove" class="locknote"></div>
+    </div>
+  </div>
+
+  <!-- ПРАВО: руки / кисть / голова / голос / ИИ -->
+  <div class="col">
+    <div class="card">
+      <h2>Руки (позы)</h2>
+      <div class="btns" id="armBtns"></div>
+      <div id="lockArm" class="locknote"></div>
+    </div>
+
+    <div class="card">
+      <h2>Кисть Inspire E2</h2>
+      <div class="btns" id="handBtns"></div>
+    </div>
+
+    <div class="card">
+      <h2>Голова — глаза (ESP32)</h2>
+      <div class="btns" id="eyeBtns"></div>
+      <label class="check" style="display:flex;align-items:center;gap:8px;color:var(--dim);font-size:13px;margin:10px 0">
+        <input type="checkbox" id="autoBlink" style="width:auto"> авто-моргание
+      </label>
+      <div class="slider"><label>Лев. глаз</label><input id="eyeL" type="range" min="0" max="180" value="147"><b id="eyeLV">147</b></div>
+      <div class="slider"><label>Прав. глаз</label><input id="eyeR" type="range" min="0" max="180" value="28"><b id="eyeRV">28</b></div>
+      <div class="slider"><label>Скор. серв</label><input id="eyeSpd" type="range" min="1" max="100" value="60"><b id="eyeSpdV">60</b></div>
+      <div class="hint" style="text-align:left">Углы прямые (servo which/angle). Калибровка: L откр 147/закр 46 · R откр 28/закр 127.</div>
+    </div>
+
+    <div class="card">
+      <h2>Голова — подсветка (LED)</h2>
+      <div class="row">
+        <select id="ledAnim" style="flex:1"></select>
+        <input type="color" id="ledColor" value="#ff00ff" style="width:44px;height:38px;padding:2px;background:#0f1418;border:1px solid var(--line);border-radius:7px">
+      </div>
+      <div class="slider"><label>Яркость</label><input id="ledBri" type="range" min="0" max="255" value="80"><b id="ledBriV">80</b></div>
+      <div class="slider"><label>Скорость</label><input id="ledSpd" type="range" min="10" max="500" value="30"><b id="ledSpdV">30</b></div>
+    </div>
+
+    <div class="card">
+      <h2>Голос робота (TTS)</h2>
+      <textarea id="ttsText" rows="2">Кузьмич на связи.</textarea>
+      <button class="act wide" id="ttsBtn" style="margin-top:8px">Сказать вслух</button>
+    </div>
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+      <h2 style="margin:0;">Диалог с ИИ</h2>
+      <div style="display:flex;gap:6px;align-items:center">
+        <a id="promptStatusBtn" href="/prompts.html" style="color: var(--txt); text-decoration: none; background: var(--panel2); padding: 4px 10px; border-radius: 6px; border: 1px solid var(--line); font-size: 12px; display:inline-flex; align-items:center; gap:4px;">
+          <span id="promptNameDisplay">промт</span>
+        </a>
+        <a id="configStatusBtn" href="/config.html" style="color: var(--txt); text-decoration: none; background: var(--panel2); padding: 4px 10px; border-radius: 6px; border: 1px solid var(--line); font-size: 12px;">настр.</a>
+      </div>
+    </div>
+    <div class="row" style="margin-bottom:8px">
+      <div class="seg" id="aiMode">
+        <button data-mode="off" class="active">Выкл</button>
+        <button data-mode="internal">Внутренняя</button>
+        <button data-mode="external">Внешняя</button>
+      </div>
+      <span id="aiStatusText" style="font-size:12px;color:var(--dim);margin-left:8px"></span>
+    </div>
+    <div class="chat" id="chat"></div>
+    <div class="row">
+      <input id="aiText" type="text" placeholder="Спросить…" disabled>
+      <button class="act" id="aiBtn" disabled>➤</button>
+    </div>
+  </div>
+</main>
+
+<footer id="log"></footer>
+
+<script src="js/base.js"></script>
+<script>
+'use strict';
+let ws=null, cfg=null, mode="manual", estop=false, aiMode="off", companionConfig=null, lastAiMode="internal";
+let move={vx:0,vy:0,wz:0}, padActive=false, keyVec={f:0,s:0,l:0,r:0,sl:0,sr:0};
+
+// -------- WebSocket --------
+function connect(){
+  ws=new WebSocket((location.protocol==="https:"?"wss":"ws")+"://"+location.host+"/ws");
+  ws.onopen=()=>setConn(true);
+  ws.onclose=()=>{setConn(false);setTimeout(connect,1500);};
+  ws.onmessage=e=>handle(JSON.parse(e.data));
+}
+function send(o){ if(ws&&ws.readyState===1) ws.send(JSON.stringify(o)); }
+function setConn(on){ $("#conn").classList.toggle("on",on); $("#connt").textContent=on?"на связи":"нет связи"; }
+
+function handle(m){
+  if(m.t==="hello"){ applyState(m); $("#dry").style.display=m.dry_run?"":"none"; if(m.companion) applyCompanion(m.companion); }
+  else if(m.t==="telemetry"){ applyState(m); $("#tvx").textContent=m.move.vx.toFixed(2);
+    $("#tvy").textContent=m.move.vy.toFixed(2); $("#twz").textContent=m.move.wz.toFixed(2); if(m.companion) applyCompanion(m.companion); }
+  else if(m.t==="event"){ logEvent(m); }
+  else if(m.t==="ai_reply"){ addMsg("bot",m.text); }
+}
+function applyState(m){
+  if(typeof m.mode!=="undefined") setMode(m.mode,false);
+  if(typeof m.estop!=="undefined") setEstop(m.estop,false);
+}
+
+// -------- Режим / стоп / interlock --------
+function setMode(m,send_){ mode=m;
+  $("#mManual").classList.toggle("active",m==="manual");
+  $("#mTeleop").classList.toggle("active",m==="teleop");
+  if(send_) send({t:"mode",mode:m});
+  refreshLocks();
+}
+function setEstop(v,send_){ estop=v; $("#estop").classList.toggle("armed",v);
+  $("#estop").textContent=v?"СБРОС СТОПА":"СТОП ⛔";
+  if(send_) send({t:v?"estop":"estop_clear"});
+  refreshLocks();
+}
+function motionBlocked(){ return estop || mode==="teleop"; }
+function refreshLocks(){
+  const why = estop ? "Активен аварийный стоп" : (mode==="teleop"?"Активна VR-телеоперация":"");
+  $("#pad").classList.toggle("dis",motionBlocked());
+  $("#lockMove").textContent=why; $("#lockArm").textContent=why;
+  document.querySelectorAll("#armBtns button,#handBtns button").forEach(b=>b.disabled=motionBlocked());
+}
+
+$("#mManual").onclick=()=>setMode("manual",true);
+$("#mTeleop").onclick=()=>setMode("teleop",true);
+$("#estop").onclick=()=>setEstop(!estop,true);
+$("#stopBtn").onclick=()=>{move={vx:0,vy:0,wz:0};send({t:"stop"});};
+
+// -------- Джойстик --------
+const pad=$("#pad"), knob=pad.querySelector(".knob"), stick=pad.querySelector(".stick");
+function padSet(nx,ny){ // nx,ny in [-1,1]
+  const r=pad.clientWidth/2-33;
+  knob.style.left=(50+nx*r/pad.clientWidth*100)+"%";
+  knob.style.top=(50+ny*r/pad.clientWidth*100)+"%";
+  const dist=Math.hypot(nx,ny)*r, ang=Math.atan2(ny,nx)*180/Math.PI;
+  stick.style.width=dist+"px";
+  stick.style.transform=`translate(0,-50%) rotate(${ang}deg)`;
+  const spd=parseInt($("#spd").value)/100;
+  move.vx = -ny*cfg.limits.vx*spd;      // вверх = вперёд
+  move.wz = -nx*cfg.limits.vyaw*spd;    // влево = поворот влево(+)
+}
+function padReset(){ knob.style.left="50%";knob.style.top="50%"; stick.style.width="0"; move.vx=0;move.wz=0; }
+function padXY(ev){
+  const rc=pad.getBoundingClientRect();
+  let x=(ev.clientX-rc.left)/rc.width*2-1, y=(ev.clientY-rc.top)/rc.height*2-1;
+  const mag=Math.hypot(x,y); if(mag>1){x/=mag;y/=mag;}
+  padSet(x,y);
+}
+pad.addEventListener("pointerdown",e=>{ if(motionBlocked())return; padActive=true; pad.classList.add("active"); pad.setPointerCapture(e.pointerId); padXY(e); });
+pad.addEventListener("pointermove",e=>{ if(padActive) padXY(e); });
+pad.addEventListener("pointerup",()=>{ padActive=false; pad.classList.remove("active"); padReset(); });
+pad.addEventListener("pointercancel",()=>{ padActive=false; pad.classList.remove("active"); padReset(); });
+
+// -------- Клавиатура --------
+const keymap={KeyW:"f",KeyS:"s",KeyA:"l",KeyD:"r",KeyQ:"sl",KeyE:"sr"};
+addEventListener("keydown",e=>{
+  if(e.target.tagName==="TEXTAREA"||e.target.tagName==="INPUT")return;
+  if(e.code==="Space"){e.preventDefault();$("#stopBtn").click();return;}
+  if(keymap[e.code]){keyVec[keymap[e.code]]=1;e.preventDefault();}
+});
+addEventListener("keyup",e=>{ if(keymap[e.code])keyVec[keymap[e.code]]=0; });
+function keyToMove(){
+  if(padActive||motionBlocked())return;
+  const spd=parseInt($("#spd").value)/100;
+  const f=keyVec.f-keyVec.s, yaw=keyVec.l-keyVec.r, strafe=keyVec.sr-keyVec.sl;
+  if(f||yaw||strafe){ move.vx=f*cfg.limits.vx*spd; move.wz=yaw*cfg.limits.vyaw*spd; move.vy=strafe*cfg.limits.vy*spd; }
+  else if(!padActive){ move.vx=0;move.wz=0;move.vy=0; }
+}
+
+// -------- Петля отправки движения 20 Гц --------
+setInterval(()=>{
+  keyToMove();
+  if(motionBlocked())return;
+  send({t:"move",vx:move.vx,vy:move.vy,wz:move.wz});
+},50);
+
+$("#spd").oninput=e=>$("#spdv").textContent=e.target.value+"%";
+
+// -------- Кнопки подсистем (строятся из /api/config) --------
+function buildButtons(){
+  const arm=$("#armBtns"); arm.innerHTML="";
+  cfg.arm_actions.forEach(a=>{
+    const b=document.createElement("button"); b.className="act"; b.textContent=a;
+    b.onclick=()=>send({t:"arm",action:a}); arm.appendChild(b);
+  });
+  const hand=$("#handBtns"); hand.innerHTML="";
+  Object.keys(cfg.hand_presets).forEach(p=>{
+    const b=document.createElement("button"); b.className="act"; b.textContent=p;
+    b.onclick=()=>send({t:"hand",preset:p}); hand.appendChild(b);
+  });
+  const eye=$("#eyeBtns"); eye.innerHTML="";
+  Object.entries(cfg.eye_macros).forEach(([label,macro])=>{
+    const b=document.createElement("button"); b.className="act"; b.textContent="👁 "+label;
+    b.onclick=()=>headCmd({cmd:"servo_macro",name:macro}); eye.appendChild(b);
+  });
+  const anim=$("#ledAnim"); anim.innerHTML="";
+  cfg.led_animations.forEach(a=>{const o=document.createElement("option");o.value=a;o.textContent=a;anim.appendChild(o);});
+  refreshLocks();
+}
+
+// голова безопасна — доступна и в телеопе, и при E-STOP
+function headCmd(payload){ send({t:"head",payload}); }
+
+
+// -------- Голова: LED + авто-моргание --------
+$("#ledAnim").onchange=e=>headCmd({cmd:"led_animation",name:e.target.value});
+$("#ledColor").onchange=e=>headCmd({cmd:"led_color",color:e.target.value});
+$("#ledBri").oninput=e=>$("#ledBriV").textContent=e.target.value;
+$("#ledBri").onchange=e=>headCmd({cmd:"led_brightness",value:parseInt(e.target.value)});
+$("#ledSpd").oninput=e=>$("#ledSpdV").textContent=e.target.value;
+$("#ledSpd").onchange=e=>headCmd({cmd:"led_speed",value:parseInt(e.target.value)});
+$("#autoBlink").onchange=e=>headCmd({cmd:"auto_blink",enabled:e.target.checked,interval:3});
+const sendEyeL=throttle(v=>headCmd({cmd:"servo",which:1,angle:v}),80);
+const sendEyeR=throttle(v=>headCmd({cmd:"servo",which:2,angle:v}),80);
+$("#eyeL").oninput=e=>{$("#eyeLV").textContent=e.target.value;sendEyeL(parseInt(e.target.value));};
+$("#eyeR").oninput=e=>{$("#eyeRV").textContent=e.target.value;sendEyeR(parseInt(e.target.value));};
+$("#eyeSpd").oninput=e=>$("#eyeSpdV").textContent=e.target.value;
+$("#eyeSpd").onchange=e=>headCmd({cmd:"servo_speed",value:parseInt(e.target.value)});
+
+// -------- Голос / ИИ --------
+$("#ttsBtn").onclick=()=>{ const t=$("#ttsText").value.trim(); if(t)send({t:"tts",text:t}); };
+
+// 3-state companion toggle
+function applyCompanion(c){
+  aiMode = c.mode || "off";
+  companionConfig = c.config || null;
+  if(aiMode !== "off") lastAiMode = aiMode;
+  document.querySelectorAll("#aiMode button").forEach(b=>b.classList.toggle("active",b.dataset.mode===aiMode));
+  const active = aiMode !== "off";
+  $("#aiText").disabled = !active;
+  $("#aiBtn").disabled = !active;
+  $("#aiText").placeholder = active ? "Спросить…" : "ИИ выключен…";
+  // Показываем выбранный конфиг для текущего режима
+  const cfgName = active
+    ? ((c.last_config && c.last_config[aiMode]) || c.config || "")
+    : "";
+  const statusText = active ? (aiMode==="internal"?"внутренняя ИИ":"внешняя ИИ") + (cfgName ? " · "+cfgName : "") : "";
+  $("#aiStatusText").textContent = statusText;
+  $("#configStatusBtn").textContent = active && cfgName ? cfgName : "настр.";
+}
+document.querySelectorAll("#aiMode button").forEach(b=>b.onclick=()=>{
+  const newMode = b.dataset.mode;
+  companionConfig = null; // сброс — бэкенд сам выберет конфиг для нового режима из _last_config
+  fetch("/api/companion/set_mode",{
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({mode:newMode, config:companionConfig})
+  }).then(r=>r.json()).then(d=>{
+    applyCompanion(d);
+    if(!d.ok) logEvent({t:"event",level:"err",msg:d.message,ts:Date.now()/1000});
+  }).catch(e=>logEvent({t:"event",level:"err",msg:"Ошибка переключения ИИ: "+e,ts:Date.now()/1000}));
+});
+
+function askAI(){ const t=$("#aiText").value.trim(); if(!t||aiMode==="off")return; addMsg("me",t); send({t:"ai",text:t,source:aiMode}); $("#aiText").value=""; }
+$("#aiBtn").onclick=askAI;
+$("#aiText").addEventListener("keydown",e=>{if(e.key==="Enter")askAI();});
+function addMsg(who,text){ const d=document.createElement("div"); d.className="msg "+who; d.textContent=text; $("#chat").appendChild(d); $("#chat").scrollTop=1e9; }
+
+// -------- Видео --------
+function tryVideo(){ const img=$("#feed"), ph=$("#feedph");
+  img.onload=()=>{img.style.display="";ph.style.display="none";};
+  img.onerror=()=>{img.style.display="none";ph.style.display="";};
+  img.src="/video/stream.mjpg?t="+Date.now();
+}
+$("#camRetry").onclick=tryVideo;
+
+// -------- Журнал --------
+function logEvent(m){ const el=document.createElement("div"); el.className="log "+m.level;
+  const ts=new Date((m.ts||Date.now()/1000)*1000).toLocaleTimeString();
+  el.innerHTML=`<span class="ts">${ts}</span> <b>${m.level.toUpperCase()}</b> ${escapeHtml(m.msg)}`;
+  const log=$("#log"); log.appendChild(el); log.scrollTop=1e9;
+  while(log.children.length>150) log.removeChild(log.firstChild);
+}
+
+async function updatePromptStatus() {
+  try {
+    const res = await fetch('/api/prompts/active');
+    if (res.ok) {
+      const data = await res.json();
+      const name = data.active;
+      const display = document.getElementById('promptNameDisplay');
+      if (name) {
+        display.textContent = name;
+      } else {
+        display.textContent = 'не выбран';
+      }
+    }
+  } catch (e) {
+    console.warn('Не удалось получить активный промт', e);
+  }
+}
+// -------- Старт --------
+fetch("/api/config").then(r=>r.json()).then(c=>{cfg=c;buildButtons();tryVideo();connect();updatePromptStatus();fetchCompanionStatus();});
+
+async function fetchCompanionStatus(){
+  try{
+    const r=await fetch("/api/companion/status");
+    if(r.ok){const d=await r.json();applyCompanion(d);}
+  }catch(e){console.warn("Companion status fetch failed:",e);}
+}
+</script>
+</body>
+</html>

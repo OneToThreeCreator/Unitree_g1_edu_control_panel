@@ -1,0 +1,56 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+.venv_voice/
+*.egg-info/
+dist/
+build/
+
+# Virtual environments (all)
+.venv*/
+venv*/
+
+# Logs
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment / secrets
+.env
+.env.*
+
+# Models (large files)
+voice_robot/llama_models/*
+voice_robot/vllm_models/*
+!voice_robot/llama_models/.gitkeep
+!voice_robot/vllm_models/.gitkeep
+
+# Archives
+*.zip
+*.tar.gz
+
+# Lock files
+*.lock
+.~lock.*
+
+# MiMoCode
+.mimocode/
+
+# Node
+node_modules/
+.next/
+out/

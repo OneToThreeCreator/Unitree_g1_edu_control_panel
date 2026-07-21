@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Управление умной головой Кузьмича</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  :root {
+    --bg-0: #060608;
+    --glass: rgba(255,255,255,0.04);
+    --glass-bd: rgba(255,255,255,0.08);
+    --text: #e8e8f0;
+    --text-dim: #8888a0;
+    --accent: #a855f7;
+    --accent-2: #ec4899;
+    --accent-3: #06b6d4;
+    --success: #10b981;
+    --warn: #f59e0b;
+    --danger: #ef4444;
+    --radius: 16px;
+  }
+  html, body {
+    min-height: 100vh; background: var(--bg-0); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', system-ui, sans-serif;
+    overflow-x: hidden;
+  }
+  body {
+    background:
+      radial-gradient(circle at 0% 0%, rgba(168,85,247,0.18), transparent 40%),
+      radial-gradient(circle at 100% 0%, rgba(236,72,153,0.15), transparent 40%),
+      radial-gradient(circle at 50% 100%, rgba(6,182,212,0.12), transparent 50%),
+      var(--bg-0);
+    padding: 16px; padding-bottom: 80px;
+  }
+  .orbs { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
+  .orb { position: absolute; border-radius: 50%; filter: blur(80px); opacity: 0.35; animation: float 20s ease-in-out infinite; }
+  .orb:nth-child(1) { width: 400px; height: 400px; background: #a855f7; top: -100px; left: -100px; }
+  .orb:nth-child(2) { width: 350px; height: 350px; background: #ec4899; top: 30%; right: -120px; animation-delay: -5s; }
+  .orb:nth-child(3) { width: 300px; height: 300px; background: #06b6d4; bottom: -80px; left: 30%; animation-delay: -10s; }
+  @keyframes float {
+    0%,100% { transform: translate(0,0) scale(1); }
+    33% { transform: translate(30px, -50px) scale(1.1); }
+    66% { transform: translate(-20px, 30px) scale(0.9); }
+  }
+  header { text-align: center; margin-bottom: 24px; padding-top: 16px; }
+  header h1 {
+    font-size: clamp(1.6rem, 4vw, 2.2rem); font-weight: 800;
+    background: linear-gradient(135deg, #a855f7 0%, #ec4899 50%, #06b6d4 100%);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+    letter-spacing: -0.02em; margin-bottom: 6px;
+  }
+  header p { color: var(--text-dim); font-size: 0.85rem; font-weight: 500; }
+  .status-pill {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 6px 14px; background: var(--glass); border: 1px solid var(--glass-bd);
+    border-radius: 99px; font-size: 0.78rem; margin-top: 10px; backdrop-filter: blur(10px);
+  }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--danger); transition: background 0.3s; }
+  .status-dot.connected { background: var(--success); box-shadow: 0 0 12px var(--success); animation: pulse 2s ease-in-out infinite; }
+  @keyframes pulse { 50% { transform: scale(1.3); } }
+  .grid { display: grid; grid-template-columns: 1fr; gap: 16px; max-width: 1100px; margin: 0 auto; }
+  @media (min-width: 768px) {
+    .grid { grid-template-columns: 1fr 1fr; }
+    .grid .led-card, .grid .metrics-card { grid-column: 1 / -1; }
+  }
+  .card {
+    background: var(--glass); border: 1px solid var(--glass-bd);
+    border-radius: var(--radius); padding: 20px; backdrop-filter: blur(20px);
+  }
+  .card-title { font-size: 1.1rem; font-weight: 700; margin-bottom: 4px; }
+  .card-subtitle { color: var(--text-dim); font-size: 0.78rem; margin-bottom: 16px; }
+  .hidden { display: none !important; }
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 6px;
+    background: rgba(245,158,11,0.15); color: var(--warn);
+    font-size: 0.68rem; font-weight: 600; margin-left: 8px; vertical-align: middle;
+  }
+  .anim-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 16px; }
+  .anim-btn {
+    padding: 10px 4px; background: var(--glass); border: 1px solid var(--glass-bd);
+    border-radius: 10px; color: var(--text); font-size: 0.78rem; font-weight: 600;
+    cursor: pointer; transition: all 0.2s; text-transform: capitalize;
+  }
+  .anim-btn:hover { border-color: var(--accent); background: rgba(168,85,247,0.1); }
+  .anim-btn.active {
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    border-color: transparent; color: white; box-shadow: 0 4px 16px rgba(168,85,247,0.4);
+  }
+  .control-row { margin-bottom: 14px; }
+  .control-label {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 6px; font-size: 0.85rem; color: var(--text-dim); font-weight: 500;
+  }
+  .control-value { color: var(--accent-3); font-weight: 700; font-variant-numeric: tabular-nums; }
+  input[type="range"] {
+    -webkit-appearance: none; width: 100%; height: 6px; border-radius: 3px;
+    background: rgba(255,255,255,0.08); outline: none;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 22px; height: 22px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    cursor: pointer; box-shadow: 0 0 12px rgba(168,85,247,0.6); border: 2px solid white;
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 22px; height: 22px; border-radius: 50%; border: 2px solid white;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2)); cursor: pointer;
+  }
+  .color-row { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; }
+  .color-picker-wrap { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .color-picker-wrap span { font-size: 0.7rem; color: var(--text-dim); }
+  input[type="color"] {
+    width: 56px; height: 56px; border: none; border-radius: 12px; cursor: pointer;
+    background: transparent; padding: 0;
+  }
+  input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+  input[type="color"]::-webkit-color-swatch { border: 2px solid var(--glass-bd); border-radius: 12px; }
+  .btn {
+    padding: 8px 16px; background: var(--glass); border: 1px solid var(--glass-bd);
+    border-radius: 10px; color: var(--text); font-size: 0.85rem; font-weight: 600;
+    cursor: pointer; transition: all 0.2s;
+  }
+  .btn:hover { border-color: var(--accent); background: rgba(168,85,247,0.1); }
+  .btn.danger { color: var(--danger); }
+  .btn.danger:hover { border-color: var(--danger); background: rgba(239,68,68,0.1); }
+  .toggle {
+    position: relative; width: 44px; height: 24px; background: rgba(255,255,255,0.08);
+    border-radius: 12px; cursor: pointer; transition: background 0.2s;
+  }
+  .toggle::after {
+    content: ''; position: absolute; top: 2px; left: 2px; width: 20px; height: 20px;
+    border-radius: 50%; background: white; transition: transform 0.2s;
+  }
+  .toggle.on { background: var(--success); }
+  .toggle.on::after { transform: translateX(20px); }
+  .toggle-row { display: flex; justify-content: space-between; align-items: center; }
+  .preset-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-top: 8px; }
+  .preset-btn {
+    padding: 6px 2px; background: var(--glass); border: 1px solid var(--glass-bd);
+    border-radius: 8px; color: var(--text-dim); font-size: 0.72rem; font-weight: 600;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .preset-btn:hover { border-color: var(--accent-3); color: var(--accent-3); background: rgba(6,182,212,0.08); }
+  .macro-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 14px;
+    padding-top: 14px; border-top: 1px solid var(--glass-bd);
+  }
+  .macro-btn {
+    padding: 10px 4px; background: linear-gradient(135deg, rgba(168,85,247,0.15), rgba(236,72,153,0.15));
+    border: 1px solid rgba(168,85,247,0.3); border-radius: 10px;
+    color: var(--text); font-size: 0.76rem; font-weight: 600; cursor: pointer;
+    transition: all 0.2s; text-transform: capitalize;
+  }
+  .macro-btn:hover { border-color: var(--accent); box-shadow: 0 4px 16px rgba(168,85,247,0.3); }
+  .macro-btn.danger { background: rgba(239,68,68,0.1); border-color: rgba(239,68,68,0.3); color: var(--danger); }
+  .macro-btn.danger:hover { border-color: var(--danger); }
+  .sync-row {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 12px; padding: 8px 12px; background: rgba(255,255,255,0.03);
+    border-radius: 10px; border: 1px solid var(--glass-bd);
+  }
+  .sync-row span { font-size: 0.82rem; color: var(--text-dim); }
+  .metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
+  .metric { background: var(--glass); border: 1px solid var(--glass-bd); border-radius: 12px; padding: 12px; }
+  .metric-label { font-size: 0.7rem; color: var(--text-dim); margin-bottom: 4px; }
+  .metric-value { font-size: 1.1rem; font-weight: 700; color: var(--accent-3); font-variant-numeric: tabular-nums; }
+  .toast {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(80px);
+    padding: 12px 20px; background: rgba(20,20,28,0.95); border: 1px solid var(--glass-bd);
+    border-radius: 12px; color: var(--text); font-size: 0.85rem; backdrop-filter: blur(20px);
+    transition: transform 0.3s, opacity 0.3s; opacity: 0; z-index: 1000; max-width: 90vw;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+  .toast.error { border-color: var(--danger); }
+  .toast.success { border-color: var(--success); }
+  .footer-info { text-align: center; color: var(--text-dim); font-size: 0.72rem; margin-top: 24px; }
+  /* Цветовая палитра с ползунками */
+  .palette { margin: 6px 0 14px; padding: 12px; background: rgba(255,255,255,0.03); border: 1px solid var(--glass-bd); border-radius: 12px; }
+  .palette-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; font-size: 0.82rem; color: var(--text-dim); font-weight: 500; }
+  .palette-swatch { width: 40px; height: 24px; border-radius: 8px; border: 2px solid var(--glass-bd); background: #ff00ff; }
+  .ch-r { color: #ff5a5a; } .ch-g { color: #4ade80; } .ch-b { color: #60a5fa; }
+  .slider-r::-webkit-slider-thumb { background: linear-gradient(135deg,#ff5a5a,#ff0000); box-shadow: 0 0 12px rgba(255,90,90,0.6); }
+  .slider-g::-webkit-slider-thumb { background: linear-gradient(135deg,#4ade80,#16a34a); box-shadow: 0 0 12px rgba(74,222,128,0.6); }
+  .slider-b::-webkit-slider-thumb { background: linear-gradient(135deg,#60a5fa,#2563eb); box-shadow: 0 0 12px rgba(96,165,250,0.6); }
+  .slider-r::-moz-range-thumb { background: #ff3b3b; } .slider-g::-moz-range-thumb { background: #22c55e; } .slider-b::-moz-range-thumb { background: #3b82f6; }
+  /* Фото команды */
+  .team-photo-wrap { max-width: 1100px; margin: 32px auto 0; text-align: center; }
+  .team-photo {
+    width: 100%; max-width: 480px; height: auto; border-radius: var(--radius);
+    border: 1px solid var(--glass-bd); box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+  /* Подпись команды */
+  .signature {
+    max-width: 1100px; margin: 20px auto 0; text-align: center;
+    padding: 18px; background: var(--glass); border: 1px solid var(--glass-bd);
+    border-radius: var(--radius); backdrop-filter: blur(20px);
+  }
+  .signature .love {
+    font-size: 0.95rem; font-weight: 700;
+    background: linear-gradient(135deg,#a855f7,#ec4899,#06b6d4);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+    margin-bottom: 6px;
+  }
+  .signature .team { color: var(--text-dim); font-size: 0.82rem; line-height: 1.5; }
+</style>
+</head>
+<body>
+<div class="orbs"><div class="orb"></div><div class="orb"></div><div class="orb"></div></div>
+
+<header>
+  <h1>Управление умной головой Кузьмича</h1>
+  <p>Светодиоды &middot; Сервоприводы &middot; WebSocket &middot; mDNS &middot; OTA</p>
+  <div class="status-pill">
+    <span class="status-dot" id="statusDot"></span>
+    <span id="statusText">Отключено</span>
+  </div>
+</header>
+
+<div class="grid">
+
+  <!-- LED Card -->
+  <div class="card led-card">
+    <div class="card-title">Светящиеся глаза</div>
+    <div class="card-subtitle">LED управление &middot; GPIO10 &middot; 2&times; WS2812B панели (14 диодов)</div>
+
+    <div class="anim-grid" id="animGrid">
+      <button class="anim-btn" data-anim="off">Выкл</button>
+      <button class="anim-btn" data-anim="static">Статичный</button>
+      <button class="anim-btn" data-anim="rainbow">Радуга</button>
+      <button class="anim-btn" data-anim="rainbow_cycle">Радуга цикл</button>
+      <button class="anim-btn" data-anim="chase">Бегущий</button>
+      <button class="anim-btn" data-anim="breathing">Дыхание</button>
+      <button class="anim-btn" data-anim="theater">Театр</button>
+      <button class="anim-btn" data-anim="wipe">Заливка</button>
+      <button class="anim-btn" data-anim="scanner">Сканер</button>
+      <button class="anim-btn" data-anim="dual">Двойной</button>
+    </div>
+
+    <div class="color-row">
+      <div class="color-picker-wrap">
+        <input type="color" id="colorPicker" value="#ff00ff">
+        <span>Основной</span>
+      </div>
+      <div class="color-picker-wrap">
+        <input type="color" id="color2Picker" value="#000000">
+        <span>Фон</span>
+      </div>
+    </div>
+
+    <!-- Цветовая палитра с ползунками (RGB) для основного цвета -->
+    <div class="palette">
+      <div class="palette-head">
+        <span>Палитра основного цвета</span>
+        <span class="palette-swatch" id="paletteSwatch"></span>
+      </div>
+      <div class="control-row">
+        <div class="control-label">
+          <span class="ch-r">Красный (R)</span>
+          <span class="control-value" id="rVal">255</span>
+        </div>
+        <input type="range" id="rSlider" class="slider-r" min="0" max="255" value="255">
+      </div>
+      <div class="control-row">
+        <div class="control-label">
+          <span class="ch-g">Зелёный (G)</span>
+          <span class="control-value" id="gVal">0</span>
+        </div>
+        <input type="range" id="gSlider" class="slider-g" min="0" max="255" value="0">
+      </div>
+      <div class="control-row">
+        <div class="control-label">
+          <span class="ch-b">Синий (B)</span>
+          <span class="control-value" id="bVal">255</span>
+        </div>
+        <input type="range" id="bSlider" class="slider-b" min="0" max="255" value="255">
+      </div>
+    </div>
+
+    <div class="control-row">
+      <div class="control-label">
+        <span>Яркость</span>
+        <span class="control-value" id="brightnessVal">80</span>
+      </div>
+      <input type="range" id="brightness" min="0" max="255" value="80" data-throttle="true">
+    </div>
+
+    <div class="control-row">
+      <div class="control-label">
+        <span>Скорость анимации</span>
+        <span class="control-value" id="speedVal">30</span>
+      </div>
+      <input type="range" id="speed" min="10" max="500" value="30" data-throttle="true">
+    </div>
+  </div>
+
+  <!-- Servo Card (скрыта, если фича выключена) -->
+  <div class="card servo-card hidden" id="servoCard">
+    <div class="card-title">Лючки глаз <span id="servoBadge"></span></div>
+    <div class="card-subtitle">Серво &middot; GPIO4 — левый глаз &middot; GPIO2 — правый глаз</div>
+
+    <div class="sync-row">
+      <span>Синхронный режим (оба глаза вместе)</span>
+      <div class="toggle" id="syncToggle"></div>
+    </div>
+
+    <div class="control-row">
+      <div class="control-label">
+        <span>Скорость сервоприводов</span>
+        <span class="control-value" id="servoSpeedVal">60</span>
+      </div>
+      <input type="range" id="servoSpeed" min="1" max="100" value="60">
+    </div>
+
+    <div class="control-row">
+      <div class="toggle-row">
+        <span>Левый глаз</span>
+        <div class="toggle on" id="servo1Toggle"></div>
+      </div>
+      <div class="control-label">
+        <span>Угол века</span>
+        <span class="control-value"><span id="servo1Val">90</span>&deg;</span>
+      </div>
+      <input type="range" id="servo1" min="0" max="180" value="90" data-throttle="true">
+      <div class="preset-row">
+        <button class="preset-btn" data-servo="1" data-angle="0">0&deg;</button>
+        <button class="preset-btn" data-servo="1" data-angle="45">45&deg;</button>
+        <button class="preset-btn" data-servo="1" data-angle="90">90&deg;</button>
+        <button class="preset-btn" data-servo="1" data-angle="135">135&deg;</button>
+        <button class="preset-btn" data-servo="1" data-angle="180">180&deg;</button>
+      </div>
+    </div>
+
+    <div class="control-row">
+      <div class="toggle-row">
+        <span>Правый глаз</span>
+        <div class="toggle on" id="servo2Toggle"></div>
+      </div>
+      <div class="control-label">
+        <span>Угол века</span>
+        <span class="control-value"><span id="servo2Val">90</span>&deg;</span>
+      </div>
+      <input type="range" id="servo2" min="0" max="180" value="90" data-throttle="true">
+      <div class="preset-row">
+        <button class="preset-btn" data-servo="2" data-angle="0">0&deg;</button>
+        <button class="preset-btn" data-servo="2" data-angle="45">45&deg;</button>
+        <button class="preset-btn" data-servo="2" data-angle="90">90&deg;</button>
+        <button class="preset-btn" data-servo="2" data-angle="135">135&deg;</button>
+        <button class="preset-btn" data-servo="2" data-angle="180">180&deg;</button>
+      </div>
+    </div>
+
+    <div class="macro-grid">
+      <button class="macro-btn" data-macro="blink_left">Подмигнуть левым</button>
+      <button class="macro-btn" data-macro="blink_right">Подмигнуть правым</button>
+      <button class="macro-btn" data-macro="blink_both">Моргнуть обоими</button>
+      <button class="macro-btn" data-macro="wink">Подмаргивание</button>
+      <button class="macro-btn" data-macro="open">Открыть глаза</button>
+      <button class="macro-btn" data-macro="close">Закрыть глаза</button>
+      <button class="macro-btn" data-macro="center">Центр</button>
+      <button class="macro-btn" data-macro="home">Домой</button>
+      <button class="macro-btn danger" data-macro="stop">Стоп</button>
+    </div>
+  </div>
+
+  <!-- Metrics Card -->
+  <div class="card metrics-card">
+    <div class="card-title">Отладочная информация</div>
+    <div class="card-subtitle">Метрики ESP32 в реальном времени</div>
+    <div class="metrics-grid">
+      <div class="metric"><div class="metric-label">Свободно памяти</div><div class="metric-value" id="mHeap">— КБ</div></div>
+      <div class="metric"><div class="metric-label">Время работы</div><div class="metric-value" id="mUptime">—</div></div>
+      <div class="metric"><div class="metric-label">Клиентов Wi-Fi</div><div class="metric-value" id="mClients">—</div></div>
+      <div class="metric"><div class="metric-label">Размер флеш-памяти</div><div class="metric-value" id="mFlash">— МБ</div></div>
+    </div>
+    <div style="margin-top: 16px; display: flex; gap: 8px; flex-wrap: wrap;">
+      <button class="btn" id="refreshBtn">Обновить</button>
+      <button class="btn danger" id="rebootBtn">Перезагрузка</button>
+    </div>
+  </div>
+
+</div>
+
+<div class="footer-info">
+  Сеть: <strong>Kuzmich</strong> / пароль <strong>12345678</strong> &middot;
+  <a href="http://esp32-control.local" style="color:var(--accent-3)">esp32-control.local</a>
+</div>
+
+<!-- Фото команды -->
+<div class="team-photo-wrap">
+  <img class="team-photo" src="/team.jpg" alt="Команда Агроинженеры">
+</div>
+
+<!-- Подпись команды -->
+<div class="signature">
+  <div class="love">Сделано с любовью на агрохакатоне 2026</div>
+  <div class="team">Команда «Агроинженеры»: Николай, Леонид, Ярослав, Ярослав Дикий и Матвей</div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const ANIMATIONS = ['off','static','rainbow','rainbow_cycle','chase','breathing','theater','wipe','scanner','dual'];
+
+let ws = null;
+let wsReconnectDelay = 500;
+let lastSendTimes = {};
+let pendingSends = {};
+let rafScheduled = false;
+let syncMode = false;
+
+function connect() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const wsUrl = proto + '//' + location.hostname + ':81';
+  ws = new WebSocket(wsUrl);
+
+  ws.onopen = () => {
+    wsReconnectDelay = 500;
+    setStatus(true);
+    showToast('Подключено', 'success');
+    sendCmd({cmd: 'get_state'});
+  };
+  ws.onclose = () => { setStatus(false); ws = null; scheduleReconnect(); };
+  ws.onerror = () => { if (ws) ws.close(); };
+  ws.onmessage = (e) => {
+    try { handleMessage(JSON.parse(e.data)); }
+    catch (err) { console.warn('parse error', err); }
+  };
+}
+
+function scheduleReconnect() {
+  showToast('Реконнект через ' + (wsReconnectDelay/1000) + 'с…', 'error');
+  setTimeout(() => {
+    wsReconnectDelay = Math.min(wsReconnectDelay * 1.5, 8000);
+    connect();
+  }, wsReconnectDelay);
+}
+
+function sendCmd(obj) {
+  if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
+}
+
+// Троттлинг: один send на кадр на ключ (named-функция вместо arguments.callee)
+function flushPending() {
+  rafScheduled = false;
+  const now = Date.now();
+  for (const k in pendingSends) {
+    const last = lastSendTimes[k] || 0;
+    if (now - last >= 40) {           // макс ~25 send/сек на ключ
+      sendCmd(pendingSends[k]);
+      lastSendTimes[k] = now;
+      delete pendingSends[k];
+    }
+  }
+  if (Object.keys(pendingSends).length > 0) {
+    rafScheduled = true;
+    requestAnimationFrame(flushPending);
+  }
+}
+
+function sendThrottled(key, obj) {
+  pendingSends[key] = obj;
+  if (!rafScheduled) {
+    rafScheduled = true;
+    requestAnimationFrame(flushPending);
+  }
+}
+
+function handleMessage(msg) {
+  if (msg.type === 'state') applyState(msg);
+  else if (msg.type === 'heartbeat') updateMetrics(msg);
+  else if (msg.type === 'error') showToast(msg.message || 'Ошибка', 'error');
+}
+
+function applyState(s) {
+  if (s.features) {
+    const card = document.getElementById('servoCard');
+    if (!s.features.servos) card.classList.add('hidden');
+    else {
+      card.classList.remove('hidden');
+      document.getElementById('servoBadge').innerHTML = '<span class="badge">включено</span>';
+    }
+  }
+  if (s.animation) {
+    document.querySelectorAll('.anim-btn').forEach(b =>
+      b.classList.toggle('active', b.dataset.anim === s.animation));
+  }
+  if (s.color)  { document.getElementById('colorPicker').value  = s.color; syncSlidersFromHex(s.color); }
+  if (s.color2) document.getElementById('color2Picker').value = s.color2;
+  if (typeof s.servo_speed === 'number') {
+    document.getElementById('servoSpeed').value = s.servo_speed;
+    document.getElementById('servoSpeedVal').textContent = s.servo_speed;
+  }
+  if (typeof s.brightness === 'number') {
+    document.getElementById('brightness').value = s.brightness;
+    document.getElementById('brightnessVal').textContent = s.brightness;
+  }
+  if (typeof s.speed === 'number') {
+    document.getElementById('speed').value = s.speed;
+    document.getElementById('speedVal').textContent = s.speed;
+  }
+  if (typeof s.servo1_angle === 'number') {
+    document.getElementById('servo1').value = s.servo1_angle;
+    document.getElementById('servo1Val').textContent = s.servo1_angle;
+  }
+  if (typeof s.servo2_angle === 'number') {
+    document.getElementById('servo2').value = s.servo2_angle;
+    document.getElementById('servo2Val').textContent = s.servo2_angle;
+  }
+  if (typeof s.servo1_enabled === 'boolean')
+    document.getElementById('servo1Toggle').classList.toggle('on', s.servo1_enabled);
+  if (typeof s.servo2_enabled === 'boolean')
+    document.getElementById('servo2Toggle').classList.toggle('on', s.servo2_enabled);
+  if (typeof s.flash_size === 'number')
+    document.getElementById('mFlash').textContent = (s.flash_size / 1048576).toFixed(0) + ' МБ';
+  updateMetrics(s);
+}
+
+function updateMetrics(s) {
+  if (typeof s.heap_free === 'number')
+    document.getElementById('mHeap').textContent = (s.heap_free / 1024).toFixed(1) + ' КБ';
+  if (typeof s.uptime_sec === 'number')
+    document.getElementById('mUptime').textContent = formatUptime(s.uptime_sec);
+  if (typeof s.wifi_clients === 'number')
+    document.getElementById('mClients').textContent = s.wifi_clients;
+}
+
+function formatUptime(sec) {
+  const d = Math.floor(sec / 86400);
+  const h = Math.floor((sec % 86400) / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  if (d > 0) return d + 'd ' + h + 'h';
+  if (h > 0) return h + 'h ' + m + 'm';
+  if (m > 0) return m + 'm ' + s + 's';
+  return s + 's';
+}
+
+function setStatus(connected) {
+  document.getElementById('statusDot').classList.toggle('connected', connected);
+  document.getElementById('statusText').textContent = connected ? 'Подключено' : 'Отключено';
+}
+
+let toastTimer = null;
+function showToast(text, kind) {
+  const t = document.getElementById('toast');
+  t.textContent = text;
+  t.className = 'toast show' + (kind ? ' ' + kind : '');
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.className = 'toast', 2500);
+}
+
+document.querySelectorAll('.anim-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    sendCmd({cmd: 'led_animation', name: btn.dataset.anim});
+    document.querySelectorAll('.anim-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  });
+});
+
+// ── Цвет + RGB палитра ──────────────────────────────────────────────
+function clamp255(v) { return Math.max(0, Math.min(255, v | 0)); }
+function toHex(r, g, b) {
+  return '#' + [r, g, b].map(x => clamp255(x).toString(16).padStart(2, '0')).join('');
+}
+function syncSlidersFromHex(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  document.getElementById('rSlider').value = r; document.getElementById('rVal').textContent = r;
+  document.getElementById('gSlider').value = g; document.getElementById('gVal').textContent = g;
+  document.getElementById('bSlider').value = b; document.getElementById('bVal').textContent = b;
+  document.getElementById('paletteSwatch').style.background = hex;
+}
+function pushColorFromSliders() {
+  const r = parseInt(document.getElementById('rSlider').value);
+  const g = parseInt(document.getElementById('gSlider').value);
+  const b = parseInt(document.getElementById('bSlider').value);
+  document.getElementById('rVal').textContent = r;
+  document.getElementById('gVal').textContent = g;
+  document.getElementById('bVal').textContent = b;
+  const hex = toHex(r, g, b);
+  document.getElementById('colorPicker').value = hex;
+  document.getElementById('paletteSwatch').style.background = hex;
+  sendThrottled('color', {cmd: 'led_color', color: hex});
+}
+
+document.getElementById('colorPicker').addEventListener('input', (e) => {
+  syncSlidersFromHex(e.target.value);
+  sendThrottled('color', {cmd: 'led_color', color: e.target.value});
+});
+document.getElementById('color2Picker').addEventListener('input', (e) =>
+  sendThrottled('color2', {cmd: 'led_color2', color: e.target.value}));
+['rSlider', 'gSlider', 'bSlider'].forEach(id =>
+  document.getElementById(id).addEventListener('input', pushColorFromSliders));
+
+document.getElementById('servoSpeed').addEventListener('input', (e) => {
+  document.getElementById('servoSpeedVal').textContent = e.target.value;
+  sendThrottled('servospeed', {cmd: 'servo_speed', value: parseInt(e.target.value)});
+});
+
+document.getElementById('brightness').addEventListener('input', (e) => {
+  document.getElementById('brightnessVal').textContent = e.target.value;
+  sendThrottled('brightness', {cmd: 'led_brightness', value: parseInt(e.target.value)});
+});
+document.getElementById('speed').addEventListener('input', (e) => {
+  document.getElementById('speedVal').textContent = e.target.value;
+  sendThrottled('speed', {cmd: 'led_speed', value: parseInt(e.target.value)});
+});
+
+document.getElementById('servo1').addEventListener('input', (e) => {
+  const v = parseInt(e.target.value);
+  document.getElementById('servo1Val').textContent = v;
+  if (syncMode) {
+    document.getElementById('servo2').value = v;
+    document.getElementById('servo2Val').textContent = v;
+    sendThrottled('servo_both', {cmd: 'servo_both', angle: v});
+  } else sendThrottled('servo1', {cmd: 'servo', which: 1, angle: v});
+});
+document.getElementById('servo2').addEventListener('input', (e) => {
+  const v = parseInt(e.target.value);
+  document.getElementById('servo2Val').textContent = v;
+  if (syncMode) {
+    document.getElementById('servo1').value = v;
+    document.getElementById('servo1Val').textContent = v;
+    sendThrottled('servo_both', {cmd: 'servo_both', angle: v});
+  } else sendThrottled('servo2', {cmd: 'servo', which: 2, angle: v});
+});
+
+document.getElementById('servo1Toggle').addEventListener('click', (e) => {
+  const on = !e.currentTarget.classList.contains('on');
+  e.currentTarget.classList.toggle('on', on);
+  sendCmd({cmd: 'servo_enable', which: 1, enabled: on});
+});
+document.getElementById('servo2Toggle').addEventListener('click', (e) => {
+  const on = !e.currentTarget.classList.contains('on');
+  e.currentTarget.classList.toggle('on', on);
+  sendCmd({cmd: 'servo_enable', which: 2, enabled: on});
+});
+
+document.getElementById('syncToggle').addEventListener('click', (e) => {
+  syncMode = !syncMode;
+  e.currentTarget.classList.toggle('on', syncMode);
+  showToast(syncMode ? 'Sync ON — оба серво вместе' : 'Sync OFF');
+});
+
+document.querySelectorAll('.preset-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const which = parseInt(btn.dataset.servo);
+    const angle = parseInt(btn.dataset.angle);
+    if (syncMode) {
+      sendCmd({cmd: 'servo_both', angle: angle});
+      document.getElementById('servo1').value = angle;
+      document.getElementById('servo2').value = angle;
+      document.getElementById('servo1Val').textContent = angle;
+      document.getElementById('servo2Val').textContent = angle;
+    } else {
+      sendCmd({cmd: 'servo_preset', which: which, angle: angle});
+      document.getElementById('servo' + which).value = angle;
+      document.getElementById('servo' + which + 'Val').textContent = angle;
+    }
+  });
+});
+
+document.querySelectorAll('.macro-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const name = btn.dataset.macro;
+    if (name === 'stop') { sendCmd({cmd: 'servo_macro_stop'}); showToast('Макрос остановлен'); }
+    else { sendCmd({cmd: 'servo_macro', name: name}); showToast('Макрос: ' + name); }
+  });
+});
+
+document.getElementById('refreshBtn').addEventListener('click', () => {
+  sendCmd({cmd: 'get_state'}); showToast('Запрошено состояние');
+});
+document.getElementById('rebootBtn').addEventListener('click', () => {
+  if (confirm('Перезагрузить ESP32?')) { sendCmd({cmd: 'reboot'}); showToast('Перезагрузка…'); }
+});
+
+fetch('/state').then(r => r.json()).then(s => applyState(s)).catch(() => {});
+connect();
+</script>
+</body>
+</html>

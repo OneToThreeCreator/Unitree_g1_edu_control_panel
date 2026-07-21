@@ -1,0 +1,66 @@
+; =============================================================================
+; Kuzmich companion config
+; Reload at runtime: kill -USR1 <pid>
+; =============================================================================
+
+[ai]
+; Backend: "llama" (local llama-server) or "openai" (any OpenAI-compatible API)
+backend = llama
+; OpenAI-compatible endpoint (used for both backends)
+base_url = http://127.0.0.1:8080/v1
+; API key (required for openai backend, ignored for llama with no auth)
+api_key =
+; Model name sent in API requests (llama-server ignores it, openai requires it)
+model =
+; Generation parameters
+temperature = 0.7
+max_tokens = 45
+
+[llama]
+; Auto-start llama-server on launch
+start_server = true
+; Path to GGUF model file
+model_path = ~/models/gemma-3-12b-it-Q4_K_M.gguf
+; llama-server listen address (without /v1)
+server_url = http://127.0.0.1:8080
+; Context window size
+ctx_size = 4096
+; Number of layers offloaded to GPU (-1 = all)
+gpu_layers = -1
+; CPU threads for inference
+n_threads = 4
+; Seconds to wait after starting server before first request
+server_wait = 5.0
+; Server stdout/stderr log file
+server_log = /tmp/llama_server.log
+; Extra flags passed to llama-server (space-separated)
+extra_args =
+
+[voice]
+wake_word = кузьмич
+listen_text = кузьмич слушает
+stt_language = ru-RU
+sample_rate = 48000
+sound_threshold = 0.015
+silence_after_speech = 0.7
+wake_window = 2.0
+no_speech_timeout = 20.0
+input_device = 0
+answer_any_speech = false
+system_prompt = kuzmich_system_prompt.txt
+system_prompt_max_chars = 3000
+
+[tts]
+url = http://127.0.0.1/api/audio/tts
+voice =
+volume = 100
+amplification_db = 15
+timeout = 15.0
+playback_command = aplay -q
+robot_audio_base_url = http://127.0.0.1
+
+[head]
+port = /dev/ttyUSB0
+brightness = 120
+loading_speed = 120
+no_head = false

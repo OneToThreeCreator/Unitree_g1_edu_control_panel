@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Редактор системных промтов</title>
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/prompts.css">
+</head>
+<body>
+<header>
+  <h1>🧠 Редактор системных промтов</h1>
+  <div class="spacer"></div>
+  <a href="/" class="back-btn">← На главную</a>
+</header>
+<main>
+  <div class="sidebar">
+    <h2>Доступные промты</h2>
+    <div id="promptList"></div>
+    <div id="status" class="status hidden"></div>
+    <div class="footnote">Активный промт отмечен ●</div>
+  </div>
+  <div class="editor">
+    <div class="top">
+      <div class="name-wrap">
+        <label for="promptName">Имя:</label>
+        <input id="promptName" placeholder="введите имя файла" />
+        <span id="dirtyIndicator" class="indicator"></span>
+      </div>
+    </div>
+    <textarea id="contentArea" placeholder="Содержимое системного промта…" spellcheck="false"></textarea>
+    <div class="actions">
+      <button class="primary" id="createBtn">➕ Создать новый</button>
+      <button class="primary" id="saveBtn">💾 Сохранить</button>
+      <button id="resetBtn">↺ Сбросить изменения</button>
+      <button class="danger" id="deleteBtn">🗑 Удалить</button>
+      <button id="selectBtn">⭐ Выбрать активным</button>
+    </div>
+  </div>
+</main>
+<script src="js/base.js"></script>
+<script src="js/editor.js"></script>
+<script>
+'use strict';
+(function() {
+  const promptList = document.getElementById('promptList');
+  const contentArea = document.getElementById('contentArea');
+  const nameInput = document.getElementById('promptName');
+  const dirtyIndicator = document.getElementById('dirtyIndicator');
+  const statusDiv = document.getElementById('status');
+  const saveBtn = document.getElementById('saveBtn');
+  const selectBtn = document.getElementById('selectBtn');
+  const deleteBtn = document.getElementById('deleteBtn');
+  const createBtn = document.getElementById('createBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  const editorPanel = document.querySelector('.editor');
+
+  const ed = new SidebarEditor({
+    nameInput, contentArea, dirtyIndicator, statusDiv,
+    saveBtn, deleteBtn,
+    editorEl: document.querySelector('.editor .top').parentElement,
+    emptyEl: null,
+    actionsEl: document.querySelector('.actions')
+  });
+
+  async function fetchPrompts() {
+    try {
+      const res = await fetch('/api/prompts/list');
+      if (!res.ok) throw new Error('Ошибка загрузки списка');
+      const data = await res.json();
+      return data.prompts || [];
+    } catch (e) {
+      ed.showMsg('Не удалось загрузить список: ' + e.message, 'err');
+      return [];
+    }
+  }
+
+  async function renderList() {
+    const names = await fetchPrompts();
+    const active = sessionStorage.getItem('activePrompt');
+    promptList.innerHTML = '';
+    names.forEach(name => {
+      const div = document.createElement('div');
+      div.className = 'prompt-item' + (name === ed.current ? ' active' : '');
+      div.textContent = name;
+      if (name === active) {
+        const star = document.createElement('span');
+        star.className = 'badge';
+        star.textContent = '\u25cf';
+        star.style.color = 'var(--ok)';
+        div.appendChild(star);
+      }
+      div.addEventListener('click', () => {
+        if (ed.isDirty()) {
+          if (!confirm('Есть несохранённые изменения. Перейти к другому файлу без сохранения?')) return;
+        }
+        loadPrompt(name);
+      });
+      promptList.appendChild(div);
+    });
+  }
+
+  async function loadPrompt(name) {
+    try {
+      const res = await fetch('/api/prompts/get/' + encodeURIComponent(name));
+      if (!res.ok) throw new Error('Промт не найден');
+      const data = await res.json();
+      ed.load(name, data.content || '');
+      ed.showEditor();
+      document.querySelectorAll('.prompt-item').forEach(el => {
+        el.classList.toggle('active', el.textContent.trim() === name);
+      });
+      await renderList();
+    } catch (e) {
+      ed.showMsg('Ошибка: ' + e.message, 'err');
+      ed.load('', '');
+      ed.showEditor();
+    }
+  }
+
+  async function autoSelectAfterDelete() {
+    const names = await fetchPrompts();
+    if (names.length > 0) {
+      loadPrompt(names[0]);
+    }
+  }
+
+  ed.bindAll({
+    saveFn: async (name, content) => {
+      const res = await fetch('/api/prompts/save/' + encodeURIComponent(name), {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ content })
+      });
+      if (!res.ok) { const err = await res.json(); throw new Error(err.detail || 'Ошибка сохранения'); }
+    },
+    renameFn: async (oldName, newName) => {
+      const res = await fetch('/api/prompts/rename/' + encodeURIComponent(oldName), {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ new_name: newName })
+      });
+      if (!res.ok) { const err = await res.json(); throw new Error(err.detail || 'Ошибка переименования'); }
+    },
+    afterSave: renderList,
+    deleteFn: async (name) => {
+      const res = await fetch('/api/prompts/delete/' + encodeURIComponent(name), { method: 'DELETE' });
+      if (!res.ok) { const err = await res.json(); throw new Error(err.detail || 'Ошибка удаления'); }
+    },
+    afterDelete: autoSelectAfterDelete
+  });
+
+  createBtn.addEventListener('click', () => {
+    if (ed.isDirty()) {
+      if (!confirm('Текущие изменения не сохранены. Продолжить?')) return;
+    }
+    ed.startNew();
+  });
+
+  resetBtn.addEventListener('click', () => {
+    if (ed.current) {
+      loadPrompt(ed.current);
+    } else {
+      ed.load('', '');
+    }
+  });
+
+  selectBtn.addEventListener('click', async () => {
+    if (!ed.current) { ed.showMsg('Сначала выберите промт', 'err'); return; }
+    if (ed.isDirty()) {
+      if (!confirm('Есть несохранённые изменения. Сохранить перед выбором?')) return;
+      await ed.save({
+        saveFn: async (name, content) => {
+          const res = await fetch('/api/prompts/save/' + encodeURIComponent(name), {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ content })
+          });
+          if (!res.ok) { const err = await res.json(); throw new Error(err.detail || 'Ошибка сохранения'); }
+        }
+      });
+    }
+    try {
+      const res = await fetch('/api/prompts/select/' + encodeURIComponent(ed.current), {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'}
+      });
+      if (!res.ok) { const err = await res.json(); throw new Error(err.detail || 'Ошибка выбора'); }
+      sessionStorage.setItem('activePrompt', ed.current);
+      ed.showMsg('Промт "' + ed.current + '" теперь активен', 'ok');
+      await renderList();
+    } catch (e) { ed.showMsg('Ошибка: ' + e.message, 'err'); }
+  });
+
+  (async function init() {
+    await renderList();
+    const active = sessionStorage.getItem('activePrompt');
+    const names = await fetchPrompts();
+    if (active && names.includes(active)) {
+      loadPrompt(active);
+    } else if (names.length > 0) {
+      loadPrompt(names[0]);
+    }
+  })();
+})();
+</script>
+</body>
+</html>
