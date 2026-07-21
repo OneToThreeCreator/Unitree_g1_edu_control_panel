@@ -48,7 +48,12 @@
     <div class="card">
       <h2>Движение</h2>
       <div id="pad" class="pad"><div class="stick"></div><div class="center-mark"></div><div class="knob"></div></div>
-      <div class="hint">Тяни джойстик · W/S — вперёд/назад · A/D — вбок · Q/E — поворот · пробел — стоп</div>
+      <div class="hint">Джойстик: вперёд/назад + вбок · Поворот: слайдер ниже · Пробел — стоп</div>
+      <div class="turn-slider">
+        <label>← поворот</label>
+        <input id="turn" type="range" min="-100" max="100" value="0">
+        <label>поворот →</label>
+      </div>
       <div class="slider">
         <label>Скорость</label>
         <input id="spd" type="range" min="10" max="100" value="60">
@@ -178,9 +183,9 @@ function refreshLocks(){
 $("#mManual").onclick=()=>setMode("manual",true);
 $("#mTeleop").onclick=()=>setMode("teleop",true);
 $("#estop").onclick=()=>setEstop(!estop,true);
-$("#stopBtn").onclick=()=>{move={vx:0,vy:0,wz:0};send({t:"stop"});};
+$("#stopBtn").onclick=()=>{move={vx:0,vy:0,wz:0};turnEl.value=0;send({t:"stop"});};
 
-// -------- Джойстик --------
+// -------- Джойстик (vx + vy) --------
 const pad=$("#pad"), knob=pad.querySelector(".knob"), stick=pad.querySelector(".stick");
 function padSet(nx,ny){ // nx,ny in [-1,1]
   const r=pad.clientWidth/2-33;
@@ -190,10 +195,10 @@ function padSet(nx,ny){ // nx,ny in [-1,1]
   stick.style.width=dist+"px";
   stick.style.transform=`translate(0,-50%) rotate(${ang}deg)`;
   const spd=parseInt($("#spd").value)/100;
-  move.vx = -ny*cfg.limits.vx*spd;      // вверх = вперёд
-  move.wz = -nx*cfg.limits.vyaw*spd;    // влево = поворот влево(+)
+  move.vx = -ny*cfg.limits.vx*spd;
+  move.vy = nx*cfg.limits.vy*spd;
 }
-function padReset(){ knob.style.left="50%";knob.style.top="50%"; stick.style.width="0"; move.vx=0;move.wz=0; }
+function padReset(){ knob.style.left="50%";knob.style.top="50%"; stick.style.width="0"; move.vx=0;move.vy=0; }
 function padXY(ev){
   const rc=pad.getBoundingClientRect();
   let x=(ev.clientX-rc.left)/rc.width*2-1, y=(ev.clientY-rc.top)/rc.height*2-1;
@@ -204,6 +209,15 @@ pad.addEventListener("pointerdown",e=>{ if(motionBlocked())return; padActive=tru
 pad.addEventListener("pointermove",e=>{ if(padActive) padXY(e); });
 pad.addEventListener("pointerup",()=>{ padActive=false; pad.classList.remove("active"); padReset(); });
 pad.addEventListener("pointercancel",()=>{ padActive=false; pad.classList.remove("active"); padReset(); });
+
+// -------- Слайдер поворота --------
+const turnEl = $("#turn");
+function readTurn(){
+  const v = parseInt(turnEl.value);
+  const spd = parseInt($("#spd").value)/100;
+  move.wz = (v/100) * cfg.limits.vyaw * spd;
+}
+turnEl.addEventListener("input", readTurn);
 
 // -------- Клавиатура --------
 const keymap={KeyW:"f",KeyS:"s",KeyA:"sl",KeyD:"sr",KeyQ:"l",KeyE:"r"};
@@ -216,7 +230,7 @@ addEventListener("keyup",e=>{ if(keymap[e.code])keyVec[keymap[e.code]]=0; });
 function keyToMove(){
   if(padActive||motionBlocked())return;
   const spd=parseInt($("#spd").value)/100;
-  const f=keyVec.f-keyVec.s, yaw=keyVec.l-keyVec.r, strafe=keyVec.sr-keyVec.sl;
+  const f=keyVec.f-keyVec.s, yaw=keyVec.l-keyVec.r, strafe=keyVec.sl-keyVec.sr;
   if(f||yaw||strafe){ move.vx=f*cfg.limits.vx*spd; move.wz=yaw*cfg.limits.vyaw*spd; move.vy=strafe*cfg.limits.vy*spd; }
   else if(!padActive){ move.vx=0;move.wz=0;move.vy=0; }
 }

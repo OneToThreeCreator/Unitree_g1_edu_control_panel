@@ -29,6 +29,9 @@ main{flex:1;display:grid;grid-template-columns:minmax(320px,1.2fr) 340px minmax(
 .pad.active .knob{box-shadow:0 0 0 5px rgba(47,157,227,.28),0 6px 22px #000a}
 .pad.dis{opacity:.35;pointer-events:none}
 .hint{font-size:12px;color:var(--dim);text-align:center;margin-top:4px}
+.turn-slider{display:flex;align-items:center;gap:8px;margin:8px 0}
+.turn-slider label{font-size:11px;color:var(--dim);white-space:nowrap}
+.turn-slider input{flex:1}
 .slider{display:flex;align-items:center;gap:10px;margin:8px 0}
 .slider label{font-size:12px;color:var(--dim);width:64px}
 .slider input{flex:1}
