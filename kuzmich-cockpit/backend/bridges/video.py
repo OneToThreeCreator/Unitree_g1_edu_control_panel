@@ -40,9 +40,14 @@ async def stream() -> Response:
         return Response(status_code=503, content=b"no video in dry-run")
 
     async def gen() -> AsyncIterator[bytes]:
-        async with httpx.AsyncClient(timeout=None) as client:
-            async with client.stream("GET", f"{CONFIG.video_mjpeg_url}/stream.mjpg") as resp:
-                async for chunk in resp.aiter_bytes():
-                    yield chunk
+        try:
+            async with httpx.AsyncClient(timeout=None) as client:
+                async with client.stream("GET", f"{CONFIG.video_mjpeg_url}/stream.mjpg") as resp:
+                    async for chunk in resp.aiter_bytes():
+                        yield chunk
+        except httpx.HTTPError as exc:
+            log.warning("video stream failed: %s", exc)
+        except OSError as exc:
+            log.warning("video stream connection failed: %s", exc)
 
     return StreamingResponse(gen(), media_type="multipart/x-mixed-replace; boundary=frame")
