@@ -48,7 +48,7 @@
     <div class="card">
       <h2>Движение</h2>
       <div id="pad" class="pad"><div class="stick"></div><div class="center-mark"></div><div class="knob"></div></div>
-      <div class="hint">Тяни джойстик · W A S D · Q/E — поворот · A/D — вбок · пробел — стоп</div>
+      <div class="hint">Тяни джойстик · W A S D · Q/E — поворот · пробел — стоп</div>
       <div class="slider">
         <label>Скорость</label>
         <input id="spd" type="range" min="10" max="100" value="60">
@@ -206,7 +206,7 @@ pad.addEventListener("pointerup",()=>{ padActive=false; pad.classList.remove("ac
 pad.addEventListener("pointercancel",()=>{ padActive=false; pad.classList.remove("active"); padReset(); });
 
 // -------- Клавиатура --------
-const keymap={KeyW:"f",KeyS:"s",KeyA:"sl",KeyD:"sr",KeyQ:"l",KeyE:"r"};
+const keymap={KeyW:"f",KeyS:"s",KeyA:"l",KeyD:"r",KeyQ:"l",KeyE:"r"};
 addEventListener("keydown",e=>{
   if(e.target.tagName==="TEXTAREA"||e.target.tagName==="INPUT")return;
   if(e.code==="Space"){e.preventDefault();$("#stopBtn").click();return;}
@@ -216,9 +216,9 @@ addEventListener("keyup",e=>{ if(keymap[e.code])keyVec[keymap[e.code]]=0; });
 function keyToMove(){
   if(padActive||motionBlocked())return;
   const spd=parseInt($("#spd").value)/100;
-  const f=keyVec.f-keyVec.s, yaw=keyVec.l-keyVec.r, strafe=keyVec.sr-keyVec.sl;
-  if(f||yaw||strafe){ move.vx=f*cfg.limits.vx*spd; move.wz=yaw*cfg.limits.vyaw*spd; move.vy=strafe*cfg.limits.vy*spd; }
-  else if(!padActive){ move.vx=0;move.wz=0;move.vy=0; }
+  const f=keyVec.f-keyVec.s, yaw=keyVec.l+keyVec.sl-keyVec.r-keyVec.sr;
+  if(f||yaw){ move.vx=f*cfg.limits.vx*spd; move.wz=yaw*cfg.limits.vyaw*spd; }
+  else if(!padActive){ move.vx=0;move.wz=0; }
 }
 
 // -------- Петля отправки движения 20 Гц --------
