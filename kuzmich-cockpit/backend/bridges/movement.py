@@ -1,14 +1,11 @@
-"""Мостик движения: непрерывный UDP-поток команд ходьбы.
+"""Мостик движения: прямой вызов Unitree SDK или dry-run.
 
-Повторяет логику v3_motion.UnitreeG1VelocitySender: фоновый поток шлёт последнюю
-команду {vx,vy,wz} на motion-receiver ~20 Гц; если свежих команд не было дольше
-TTL — шлёт нули (защита от «залипшей» скорости при обрыве связи).
+В non-dry-run режиме вызывает LocoClient.SetVelocity() напрямую —
+отдельный motion-receiver не нужен. В dry-run логирует команды.
 """
 from __future__ import annotations
 
-import json
 import logging
-import socket
 import threading
 import time
 from typing import Callable, Optional, Tuple
@@ -25,14 +22,13 @@ def _clamp(v: float, lo: float, hi: float) -> float:
 class MovementBridge:
     def __init__(self, on_event: Optional[Callable[[str, str], None]] = None) -> None:
         self._on_event = on_event or (lambda level, msg: None)
-        self._sock: Optional[socket.socket] = None
+        self._client = None
         self._cmd: Tuple[float, float, float] = (0.0, 0.0, 0.0)
         self._cmd_time = 0.0
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
 
-    # текущая (уже ограниченная) команда — для телеметрии
     @property
     def current(self) -> Tuple[float, float, float]:
         with self._lock:
@@ -40,12 +36,33 @@ class MovementBridge:
 
     def start(self) -> None:
         if not CONFIG.dry_run:
-            self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            self._connect_sdk()
         self._stop.clear()
         self._thread = threading.Thread(target=self._loop, daemon=True, name="move-udp")
         self._thread.start()
-        mode = "DRY-RUN" if CONFIG.dry_run else f"udp://{CONFIG.move_udp_host}:{CONFIG.move_udp_port}"
-        log.info("MovementBridge started (%s)", mode)
+        if CONFIG.dry_run:
+            log.info("MovementBridge started (DRY-RUN)")
+        elif self._client is not None:
+            log.info("MovementBridge started (Unitree SDK, interface=%s)", CONFIG.sdk_interface)
+        else:
+            log.warning("MovementBridge started (SDK unavailable, commands dropped)")
+
+    def _connect_sdk(self) -> None:
+        try:
+            from unitree_sdk2py.core.channel import ChannelFactoryInitialize
+            from unitree_sdk2py.g1.loco.g1_loco_client import LocoClient
+
+            ChannelFactoryInitialize(0, CONFIG.sdk_interface)
+            self._client = LocoClient()
+            self._client.SetTimeout(10.0)
+            self._client.Init()
+            log.info("Unitree LocoClient connected (interface=%s)", CONFIG.sdk_interface)
+        except ImportError:
+            log.warning("unitree_sdk2py not found — movement will be ignored")
+            self._client = None
+        except Exception as exc:
+            log.warning("Unitree SDK init failed: %s", exc)
+            self._client = None
 
     def set(self, vx: float, vy: float, vyaw: float) -> Tuple[float, float, float]:
         vx = _clamp(float(vx), -CONFIG.max_vx, CONFIG.max_vx)
@@ -70,32 +87,28 @@ class MovementBridge:
             if age > CONFIG.move_ttl_s:
                 vx, vy, vyaw = 0.0, 0.0, 0.0
 
-            packet = json.dumps({"vx": vx, "vy": vy, "wz": vyaw}).encode("utf-8")
             if CONFIG.dry_run:
                 if abs(vx) + abs(vy) + abs(vyaw) > 1e-4:
-                    log.debug("[DRY] move %s", packet.decode())
-            elif self._sock is not None:
+                    log.debug("[DRY] move vx=%.3f vy=%.3f wz=%.3f", vx, vy, vyaw)
+            elif self._client is not None:
                 try:
-                    self._sock.sendto(packet, (CONFIG.move_udp_host, CONFIG.move_udp_port))
-                except OSError as exc:
-                    log.warning("UDP move send failed: %s", exc)
+                    if abs(vx) < 1e-4 and abs(vy) < 1e-4 and abs(vyaw) < 1e-4:
+                        self._client.StopMove()
+                    else:
+                        self._client.SetVelocity(vx, vy, vyaw, 0.12)
+                except Exception as exc:
+                    log.warning("SDK SetVelocity failed: %s", exc)
             time.sleep(CONFIG.move_repeat_s)
 
     def shutdown(self) -> None:
-        # финальные нули, затем закрытие
         self.stop_move()
-        if not CONFIG.dry_run and self._sock is not None:
-            packet = json.dumps({"vx": 0.0, "vy": 0.0, "wz": 0.0}).encode("utf-8")
-            for _ in range(5):
-                try:
-                    self._sock.sendto(packet, (CONFIG.move_udp_host, CONFIG.move_udp_port))
-                except OSError:
-                    break
-                time.sleep(0.02)
+        # Send final zeros
+        if not CONFIG.dry_run and self._client is not None:
+            try:
+                self._client.StopMove()
+            except Exception:
+                pass
         self._stop.set()
         if self._thread is not None:
             self._thread.join(timeout=1.0)
-        if self._sock is not None:
-            self._sock.close()
-            self._sock = None
         log.info("MovementBridge stopped")

@@ -44,9 +44,8 @@ class Config:
     host: str = _env("COCKPIT_HOST", "0.0.0.0")
     port: int = int(_env("COCKPIT_PORT", "8080"))
 
-    # --- Движение (UDP motion receiver / bridge) ---
-    move_udp_host: str = _env("MOVE_UDP_HOST", "127.0.0.1")
-    move_udp_port: int = int(_env("MOVE_UDP_PORT", "15100"))
+    # --- Движение (Unitree SDK напрямую) ---
+    sdk_interface: str = _env("SDK_INTERFACE", "eth0")
     move_repeat_s: float = 0.05          # 20 Гц, как в v3_motion
     move_ttl_s: float = 0.55             # нет свежих команд -> нули
     max_vx: float = 0.30
