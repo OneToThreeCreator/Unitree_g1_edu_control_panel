@@ -14,7 +14,7 @@ log = logging.getLogger("cockpit.camera.local")
 
 
 class LocalBackend(VideoBackend):
-    """Capture from RealSense via pyrealsense2, encode via PyAV (h264_nvmpi)."""
+    """Capture from RealSense via pyrealsense2, encode via PyAV (hardware encoder)."""
 
     def __init__(self, config: CameraConfig) -> None:
         self._config = config

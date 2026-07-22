@@ -41,8 +41,11 @@ class CameraConfig:
     disable_ir_emitter: bool = _env_bool("CAM_DISABLE_IR", False)
 
     # --- ffmpeg encoding (encoder name определяет codec) ---
-    # h264_nvmpi → H.264, h265_nvmpi → H.265, av1_nvmpi → AV1
-    ffmpeg_encoder: str = _env("CAM_FFMPEG_ENCODER", "h264_nvmpi")
+    # h264_v4l2m2m → H.264 (V4L2 M2M, hardware on Jetson Orin NX)
+    # h264_omx → H.264 (OpenMAX, hardware, fallback)
+    # libx264 → H.264 (software, universal fallback)
+    # h264_nvmpi → H.264 (NVIDIA MPI, если собран с --enable-nvmpi)
+    ffmpeg_encoder: str = _env("CAM_FFMPEG_ENCODER", "h264_v4l2m2m")
     ffmpeg_bitrate: int = _env_int("CAM_FFMPEG_BITRATE", 4000)  # kbps
     ffmpeg_preset: str = _env("CAM_FFMPEG_PRESET", "medium")
 
