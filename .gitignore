@@ -34,10 +34,10 @@ Thumbs.db
 .env.*
 
 # Models (large files)
-voice_robot/llama_models/*
-voice_robot/vllm_models/*
-!voice_robot/llama_models/.gitkeep
-!voice_robot/vllm_models/.gitkeep
+kuzmich-cockpit/ai/llama_models/*
+kuzmich-cockpit/ai/vllm_models/*
+!kuzmich-cockpit/ai/llama_models/.gitkeep
+!kuzmich-cockpit/ai/vllm_models/.gitkeep
 
 # Archives
 *.zip
