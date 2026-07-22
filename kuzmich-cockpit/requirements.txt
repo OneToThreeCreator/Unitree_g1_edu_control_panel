@@ -7,3 +7,8 @@ httpx==0.24.1
 # На борту обычно уже установлен. На dev-машине не обязателен (мок-режим).
 pyserial==3.5
 python-multipart==0.0.20
+
+# Camera module
+websockets>=10.0
+av>=10.0            # PyAV — Python bindings для libavcodec (h264_nvmpi)
+numpy>=1.20

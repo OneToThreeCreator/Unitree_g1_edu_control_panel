@@ -57,3 +57,28 @@ footer{height:132px;background:var(--panel);border-top:1px solid var(--line);pad
 .log .ts{color:#5b6875}
 .log.info b{color:var(--ok)} .log.warn b{color:var(--warn)} .log.err b{color:var(--err)}
 .locknote{color:var(--warn);font-size:12px;margin-top:6px;min-height:16px}
+
+/* Video header & camera controls */
+.video-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.video-header h2{margin:0}
+.video-controls{display:flex;align-items:center;gap:8px}
+
+/* Camera status badge */
+.cam-status{font-size:11px;padding:3px 8px;border-radius:10px;background:var(--panel2);border:1px solid var(--line)}
+.cam-status.offline{color:var(--dim)}
+.cam-status.live{color:var(--ok);border-color:var(--ok)}
+.cam-status.connecting{color:var(--warn)}
+.cam-status.error{color:var(--err)}
+
+/* Camera toggle */
+.cam-toggle-row{display:flex;align-items:center;gap:10px;margin:10px 0 4px}
+.switch{position:relative;width:40px;height:22px;display:inline-block}
+.switch input{opacity:0;width:0;height:0}
+.switch .slider{position:absolute;inset:0;background:var(--panel2);border-radius:22px;border:1px solid var(--line);cursor:pointer;transition:.2s}
+.switch .slider::before{content:"";position:absolute;width:16px;height:16px;left:2px;top:2px;background:var(--dim);border-radius:50%;transition:.2s}
+.switch input:checked+.slider{background:var(--accent);border-color:var(--accent)}
+.switch input:checked+.slider::before{transform:translateX(18px);background:#fff}
+#camLabel{font-size:13px;color:var(--dim)}
+
+/* Video element */
+.video video{width:100%;height:100%;object-fit:contain}
