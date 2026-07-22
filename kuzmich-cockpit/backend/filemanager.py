@@ -84,8 +84,11 @@ async def delete_item(path: str):
         target.unlink()
     return {"status": "ok"}
 
-@router.post("/mkdir")
-async def make_dir(path: str, name: str = Body(...)):
+@router.put("/{path:path}/mkdir")
+async def make_dir(path: str, data: dict):
+    name = data.get("name", "")
+    if not name:
+        raise HTTPException(400, "Отсутствует 'name'")
     target = safe_path(path)
     if not target.is_dir():
         raise HTTPException(400, "Parent is not a directory")
@@ -93,8 +96,11 @@ async def make_dir(path: str, name: str = Body(...)):
     new_dir.mkdir(exist_ok=False)
     return {"status": "ok"}
 
-@router.post("/rename")
-async def rename_item(path: str, new_name: str = Body(...)):
+@router.put("/{path:path}/rename")
+async def rename_item(path: str, data: dict):
+    new_name = data.get("new_name", "")
+    if not new_name:
+        raise HTTPException(400, "Отсутствует 'new_name'")
     target = safe_path(path)
     if not target.exists():
         raise HTTPException(404, "Item not found")
@@ -125,8 +131,9 @@ async def run_script(path: str = Body(...), args: List[str] = Body(default=[])):
     except Exception as e:
         raise HTTPException(500, str(e))
 
-@router.post("/save")
-async def save_file(path: str = Body(...), content: str = Body(...)):
+@router.put("/{path:path}")
+async def save_file(path: str, data: dict):
+    content = data.get("content", "")
     target = safe_path(path)
     if target.exists() and target.is_dir():
         raise HTTPException(400, "Cannot save to a directory")

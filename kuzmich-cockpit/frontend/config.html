@@ -48,6 +48,7 @@
 </main>
 
 <script src="js/base.js"></script>
+<script src="js/api.js"></script>
 <script src="js/editor.js"></script>
 <script src="js/ini-parser.js"></script>
 <script src="js/model-fetcher.js"></script>
@@ -166,11 +167,10 @@
     ed.hideEditor();
     loadConfigList();
     try {
-      const st = await fetch('/api/companion/status');
-      const stData = await st.json();
+      const stData = await API.companionStatus();
       const lastCfg = stData.last_config && stData.last_config[mode];
       if(lastCfg){
-        const configs = await (await fetch('/api/companion/configs/' + mode)).json();
+        const configs = await API.companionListConfigs(mode);
         if((configs.configs || []).includes(lastCfg)){
           loadConfig(lastCfg);
           return;
@@ -181,9 +181,7 @@
 
   async function loadDefaults(){
     try {
-      const res = await fetch('/api/companion/base_config');
-      if(!res.ok) return;
-      const data = await res.json();
+      const data = await API.companionBaseConfig();
       baseDefaults = {};
       (data.sections || []).forEach(s => {
         baseDefaults[s.name] = {};
@@ -194,13 +192,11 @@
 
   async function loadConfigList(){
     try {
-      const res = await fetch('/api/companion/configs/' + currentMode);
-      const data = await res.json();
+      const data = await API.companionListConfigs(currentMode);
       const names = data.configs || [];
       let activeName = null;
       try {
-        const st = await fetch('/api/companion/status');
-        const stData = await st.json();
+        const stData = await API.companionStatus();
         activeName = stData.last_config && stData.last_config[currentMode] || null;
       } catch(e){}
 
@@ -231,9 +227,7 @@
 
   async function loadConfig(name){
     try {
-      const res = await fetch('/api/companion/config/' + currentMode + '/get/' + encodeURIComponent(name));
-      if(!res.ok) throw new Error('Не найден');
-      const data = await res.json();
+      const data = await API.companionGetConfig(currentMode, name);
       overrides = parseOverride(data.content || '');
       originalOverrides = JSON.parse(JSON.stringify(overrides));
       rawMode = false;
@@ -244,8 +238,7 @@
       ed.showEditor();
       loadConfigList();
       try {
-        const st = await fetch('/api/companion/status');
-        const stData = await st.json();
+        const stData = await API.companionStatus();
         activeBadge.style.display = (stData.mode === currentMode && stData.config === name) ? '' : 'none';
       } catch(e){ activeBadge.style.display = 'none'; }
     } catch(e){ ed.showMsg('Ошибка: ' + e.message, 'err'); }
@@ -437,37 +430,24 @@
   ed.bindAll({
     saveFn: async (name, content) => {
       if(ed.current === null){
-        const configs = await (await fetch('/api/companion/configs/' + currentMode)).json();
+        const configs = await API.companionListConfigs(currentMode);
         if((configs.configs || []).includes(name)){
           if(!confirm('Файл "' + name + '" уже существует. Перезаписать?')) throw new Error('Отменено');
         } else {
-          const res = await fetch('/api/companion/config/' + currentMode + '/create', {
-            method: 'POST', headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ name: name })
-          });
-          if(!res.ok){ const err = await res.json(); throw new Error(err.detail || 'Ошибка создания'); }
+          await API.companionCreateConfig(currentMode, name);
         }
       }
-      const saveRes = await fetch('/api/companion/config/' + currentMode + '/save/' + encodeURIComponent(name), {
-        method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ content })
-      });
-      if(!saveRes.ok){ const err = await saveRes.json(); throw new Error(err.detail || 'Ошибка сохранения'); }
+      await API.companionSaveConfig(currentMode, name, content);
     },
     renameFn: async (oldName, newName) => {
-      const res = await fetch('/api/companion/config/' + currentMode + '/rename/' + encodeURIComponent(oldName), {
-        method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ new_name: newName })
-      });
-      if(!res.ok){ const err = await res.json(); throw new Error(err.detail || 'Ошибка переименования'); }
+      await API.companionRenameConfig(currentMode, oldName, newName);
     },
     afterSave: () => { originalOverrides = JSON.parse(JSON.stringify(overrides)); loadConfigList(); },
     deleteFn: async (name) => {
-      const res = await fetch('/api/companion/config/' + currentMode + '/delete/' + encodeURIComponent(name), { method: 'DELETE' });
-      if(!res.ok){ const err = await res.json(); throw new Error(err.detail || 'Ошибка'); }
+      await API.companionDeleteConfig(currentMode, name);
     },
     afterDelete: async () => {
-      const data = await (await fetch('/api/companion/configs/' + currentMode)).json();
+      const data = await API.companionListConfigs(currentMode);
       const names = data.configs || [];
       if (names.length > 0) {
         loadConfig(names[0]);
@@ -509,12 +489,8 @@
   $('#selectBtn').onclick = async () => {
     if(!ed.current){ ed.showMsg('Сначала выберите конфиг', 'err'); return; }
     try {
-      const res = await fetch('/api/companion/select', {
-        method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ mode: currentMode, config: ed.current })
-      });
-      const d = await res.json();
-      if(!res.ok || !d.ok) throw new Error(d.message || d.detail || 'Ошибка');
+      const d = await API.companionSelect(currentMode, ed.current);
+      if(!d.ok) throw new Error(d.message || 'Ошибка');
       ed.showMsg(ed.current + ' выбран', 'ok');
       activeBadge.style.display = '';
       document.querySelectorAll('.config-item').forEach(el => {
@@ -535,8 +511,7 @@
   (async function init(){
     await loadDefaults();
     try {
-      const st = await fetch('/api/companion/status');
-      const stData = await st.json();
+      const stData = await API.companionStatus();
       const mode = (stData.mode === 'internal' || stData.mode === 'external') ? stData.mode : 'internal';
       await setMode(mode);
       return;

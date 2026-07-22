@@ -23,7 +23,9 @@ from .bridges import arms, ai, hand, prompt, voice
 from .bridges.companion import COMPANION
 from .bridges.movement import MovementBridge
 from .bridges.head import HeadBridge
-from .bridges.video import router as video_router
+from .bridges.teleop import TELEOP
+from .camera import router as camera_router, init_camera, get_camera_manager
+from .camera.config import CameraConfig
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("cockpit")
@@ -31,7 +33,7 @@ log = logging.getLogger("cockpit")
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 
 app = FastAPI(title="Kuzmich Cockpit")
-app.include_router(video_router)
+app.include_router(camera_router)
 app.include_router(file_router)
 
 movement = MovementBridge(on_event=lambda level, msg: STATE.log_event(level, msg))
@@ -46,6 +48,17 @@ _clients: Set[WebSocket] = set()
 @app.on_event("startup")
 async def _startup() -> None:
     movement.start()
+    # Initialize camera module
+    camera_config = CameraConfig()
+    init_camera(camera_config)
+    # Auto-start camera if not dry_run
+    if not CONFIG.dry_run:
+        cam = get_camera_manager()
+        if cam:
+            try:
+                await cam.start()
+            except Exception as e:
+                log.warning("Camera auto-start failed: %s", e)
     asyncio.get_event_loop().create_task(_telemetry_loop())
     log.info("Cockpit up. dry_run=%s  http://%s:%s", CONFIG.dry_run, CONFIG.host, CONFIG.port)
 
@@ -54,6 +67,9 @@ async def _startup() -> None:
 async def _shutdown() -> None:
     movement.shutdown()
     head.shutdown()
+    cam = get_camera_manager()
+    if cam:
+        await cam.shutdown()
 
 
 # --------------------------------------------------------------------------- #
@@ -74,14 +90,17 @@ async def _telemetry_loop() -> None:
     while True:
         vx, vy, wz = movement.current
         snap = STATE.snapshot()
-        await _broadcast({
+        cam = get_camera_manager()
+        msg = {
             "t": "telemetry",
             "mode": snap["mode"],
             "estop": snap["estop"],
             "dry_run": CONFIG.dry_run,
             "companion": COMPANION.status(),
             "move": {"vx": round(vx, 3), "vy": round(vy, 3), "wz": round(wz, 3)},
-        })
+            "camera": cam.status() if cam else {"state": "stopped"},
+        }
+        await _broadcast(msg)
         await asyncio.sleep(0.2)
 
 
@@ -100,8 +119,102 @@ async def api_config() -> JSONResponse:
         "limits": {"vx": CONFIG.max_vx, "vy": CONFIG.max_vy, "vyaw": CONFIG.max_vyaw},
     })
 
+# --- State transitions (PUT — идемпотентно, замена состояния) ---
+
+@app.put("/api/state/mode")
+async def api_set_mode(data: dict):
+    mode = data.get("mode", MODE_MANUAL)
+    try:
+        STATE.set_mode(mode)
+    except ValueError as exc:
+        await _emit("err", str(exc))
+        return {"error": str(exc), **STATE.snapshot()}
+    if mode == MODE_TELEOP:
+        movement.stop_move()
+        await TELEOP.start()
+    else:
+        await TELEOP.stop()
+    await _emit("info", f"Режим: {'VR-телеоперация' if mode == MODE_TELEOP else 'ручной пульт'}")
+    return {"mode": mode, **STATE.snapshot()}
+
+@app.put("/api/state/estop")
+async def api_set_estop(data: dict):
+    engaged = data.get("engaged", True)
+    STATE.set_estop(engaged)
+    if engaged:
+        movement.stop_move()
+        await _emit("err", "АВАРИЙНЫЙ СТОП")
+    else:
+        await _emit("info", "Аварийный стоп сброшен")
+    return {"estop": engaged}
+
+@app.post("/api/movement/stop")
+async def api_stop_movement():
+    movement.stop_move()
+    await _emit("info", "Стоп движения")
+    return {"status": "ok"}
+
+# --- Commands: PUT для идемпотентных (задают состояние), POST для неидемпотентных ---
+
+@app.put("/api/command/arm")
+async def api_arm_command(data: dict):
+    allowed, why = STATE.motion_allowed()
+    if not allowed:
+        await _emit("warn", f"Рука заблокирована: {why}")
+        return {"ok": False, "detail": why}
+    action = str(data.get("action", ""))
+    loop = asyncio.get_event_loop()
+    ok, detail = await loop.run_in_executor(None, arms.send_arm_action, action)
+    await _emit("info" if ok else "err", f"Рука '{action}': {detail}")
+    return {"ok": ok, "detail": detail}
+
+@app.put("/api/command/hand")
+async def api_hand_command(data: dict):
+    allowed, why = STATE.motion_allowed()
+    if not allowed:
+        await _emit("warn", f"Кисть заблокирована: {why}")
+        return {"ok": False, "detail": why}
+    angles = data.get("angles")
+    if not angles:
+        preset = str(data.get("preset", ""))
+        angles = CONFIG.hand_presets.get(preset)
+    if not angles:
+        await _emit("err", "Кисть: не заданы углы/пресет")
+        return {"ok": False, "detail": "не заданы углы/пресет"}
+    loop = asyncio.get_event_loop()
+    ok, detail = await loop.run_in_executor(None, hand.write_left_angles, angles)
+    await _emit("info" if ok else "err", f"Кисть {list(angles)}: {'ok' if ok else detail}")
+    return {"ok": ok, "detail": detail}
+
+@app.put("/api/command/head")
+async def api_head_command(data: dict):
+    payload = data.get("payload") or {}
+    if not isinstance(payload, dict) or not payload.get("cmd"):
+        await _emit("err", "Голова: пустая команда")
+        return {"ok": False, "detail": "пустая команда"}
+    ok, detail = await head.send(payload)
+    label = payload.get("name", payload.get("value", payload.get("color", "")))
+    await _emit("info" if ok else "err", f"Голова {payload['cmd']} {label}: {detail}")
+    return {"ok": ok, "detail": detail}
+
+@app.post("/api/command/tts")
+async def api_tts_command(data: dict):
+    ok, detail = await voice.speak(str(data.get("text", "")))
+    await _emit("info" if ok else "err", f"TTS: {detail}")
+    return {"ok": ok, "detail": detail}
+
+@app.post("/api/command/ai")
+async def api_ai_command(data: dict):
+    source = str(data.get("source", "local"))
+    ok, reply = await ai.chat(str(data.get("text", "")), source)
+    if ok:
+        return {"ok": True, "source": source, "text": reply}
+    else:
+        await _emit("err", f"ИИ: {reply}")
+        return {"ok": False, "detail": reply}
+
 # --------------------------------------------------------------------------- #
-# WebSocket управления
+# WebSocket управления (только move: {vx, vy, wz})
 # --------------------------------------------------------------------------- #
 @app.websocket("/ws")
 async def ws_control(ws: WebSocket) -> None:
@@ -113,7 +226,13 @@ async def ws_control(ws: WebSocket) -> None:
     try:
         while True:
             data = await ws.receive_json()
-            await _dispatch(ws, data)
+            vx = data.get("vx", 0.0)
+            vy = data.get("vy", 0.0)
+            wz = data.get("wz", 0.0)
+            if STATE.motion_allowed()[0]:
+                movement.set(vx, vy, wz)
+            else:
+                movement.stop_move()
     except WebSocketDisconnect:
         pass
     except Exception as exc:  # noqa: BLE001
@@ -125,105 +244,6 @@ async def ws_control(ws: WebSocket) -> None:
 async def _emit(level: str, msg: str) -> None:
     await _broadcast(STATE.log_event(level, msg))
 
-
-async def _dispatch(ws: WebSocket, data: Dict[str, Any]) -> None:
-    t = data.get("t")
-    loop = asyncio.get_event_loop()
-
-    # --- движение (высокочастотное, без спама событий) ---
-    if t == "move":
-        allowed, _ = STATE.motion_allowed()
-        if allowed:
-            movement.set(data.get("vx", 0.0), data.get("vy", 0.0), data.get("wz", 0.0))
-        else:
-            movement.stop_move()
-        return
-
-    if t == "stop":
-        movement.stop_move()
-        await _emit("info", "Стоп движения")
-        return
-
-    # --- аварийный стоп ---
-    if t == "estop":
-        STATE.set_estop(True)
-        movement.stop_move()
-        await _emit("err", "АВАРИЙНЫЙ СТОП")
-        return
-    if t == "estop_clear":
-        STATE.set_estop(False)
-        await _emit("info", "Аварийный стоп сброшен")
-        return
-
-    # --- режим ---
-    if t == "mode":
-        mode = data.get("mode", MODE_MANUAL)
-        try:
-            STATE.set_mode(mode)
-        except ValueError as exc:
-            await _emit("err", str(exc))
-            return
-        if mode == MODE_TELEOP:
-            movement.stop_move()
-        await _emit("info", f"Режим: {'VR-телеоперация' if mode == MODE_TELEOP else 'ручной пульт'}")
-        return
-
-    # --- руки (моторика: interlock) ---
-    if t == "arm":
-        allowed, why = STATE.motion_allowed()
-        if not allowed:
-            await _emit("warn", f"Рука заблокирована: {why}")
-            return
-        action = str(data.get("action", ""))
-        ok, detail = await loop.run_in_executor(None, arms.send_arm_action, action)
-        await _emit("info" if ok else "err", f"Рука '{action}': {detail}")
-        return
-
-    # --- кисть (моторика: interlock) ---
-    if t == "hand":
-        allowed, why = STATE.motion_allowed()
-        if not allowed:
-            await _emit("warn", f"Кисть заблокирована: {why}")
-            return
-        angles = data.get("angles")
-        if not angles:
-            preset = str(data.get("preset", ""))
-            angles = CONFIG.hand_presets.get(preset)
-        if not angles:
-            await _emit("err", "Кисть: не заданы углы/пресет")
-            return
-        ok, detail = await loop.run_in_executor(None, hand.write_left_angles, angles)
-        await _emit("info" if ok else "err", f"Кисть {list(angles)}: {'ok' if ok else detail}")
-        return
-
-    # --- голова: ESP32 (LED/глаза — безопасно и в телеопе) ---
-    if t == "head":
-        payload = data.get("payload") or {}
-        if not isinstance(payload, dict) or not payload.get("cmd"):
-            await _emit("err", "Голова: пустая команда")
-            return
-        ok, detail = await head.send(payload)
-        label = payload.get("name", payload.get("value", payload.get("color", "")))
-        await _emit("info" if ok else "err", f"Голова {payload['cmd']} {label}: {detail}")
-        return
-
-    # --- голос (TTS) ---
-    if t == "tts":
-        ok, detail = await voice.speak(str(data.get("text", "")))
-        await _emit("info" if ok else "err", f"TTS: {detail}")
-        return
-
-    # --- ИИ (диалог) ---
-    if t == "ai":
-        source = str(data.get("source", "local"))
-        ok, reply = await ai.chat(str(data.get("text", "")), source)
-        if ok:
-            await ws.send_json({"t": "ai_reply", "source": source, "text": reply})
-        else:
-            await _emit("err", f"ИИ: {reply}")
-        return
-
-    await _emit("warn", f"Неизвестная команда: {t}")
 
 # -------- Управление системными промтами ИИ --------
 @app.get("/api/prompts/list")
@@ -256,7 +276,7 @@ async def api_get_prompt(name: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/prompts/save/{name}")
+@app.put("/api/prompts/{name}")
 async def api_save_prompt(name: str, data: dict):
     content = data.get("content")
     if content is None:
@@ -274,7 +294,7 @@ async def api_delete_prompt(name: str):
     else:
         raise HTTPException(status_code=404, detail="Промт не найден")
 
-@app.post("/api/prompts/select/{name}")
+@app.put("/api/prompts/{name}/select")
 async def api_select_prompt(name: str):
     try:
         if prompt.select_prompt(name):
@@ -286,7 +306,7 @@ async def api_select_prompt(name: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/api/prompts/rename/{old_name}")
+@app.put("/api/prompts/{old_name}/rename")
 async def api_rename_prompt(old_name: str, data: dict):
     new_name = data.get("new_name")
     if not new_name:
@@ -305,7 +325,7 @@ async def api_rename_prompt(old_name: str, data: dict):
 # --------------------------------------------------------------------------- #
 # Управление компаньоном ИИ
 # --------------------------------------------------------------------------- #
-@app.post("/api/companion/select")
+@app.put("/api/companion/select")
 async def api_companion_select(data: dict):
     mode = data.get("mode", "")
     config_name = data.get("config", "")
@@ -333,7 +353,7 @@ async def api_companion_status():
     return COMPANION.status()
 
 
-@app.post("/api/companion/set_mode")
+@app.put("/api/companion/mode")
 async def api_companion_set_mode(data: dict):
     mode = data.get("mode", "off")
     config_name = data.get("config")
@@ -352,9 +372,9 @@ async def api_companion_list_configs(mode: str):
     return {"configs": COMPANION.list_configs(mode)}
 
 
-@app.post("/api/companion/config/{mode}/create")
-async def api_companion_create_config(mode: str, data: dict):
-    name = data.get("name", "")
+@app.put("/api/companion/config/{mode}/{name}")
+async def api_companion_create_config(mode: str, name: str, data: dict):
+    name = data.get("name", name)
     if not name:
         raise HTTPException(status_code=400, detail="Отсутствует 'name'")
     try:
@@ -366,7 +386,7 @@ async def api_companion_create_config(mode: str, data: dict):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/api/companion/config/{mode}/rename/{old_name}")
+@app.put("/api/companion/config/{mode}/{old_name}/rename")
 async def api_companion_rename_config(mode: str, old_name: str, data: dict):
     new_name = data.get("new_name", "")
     if not new_name:
@@ -425,7 +445,7 @@ async def api_companion_get_config(mode: str, name: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/api/companion/config/{mode}/save/{name}")
+@app.put("/api/companion/config/{mode}/{name}")
 async def api_companion_save_config(mode: str, name: str, data: dict):
     content_text = data.get("content", "")
     try:
@@ -448,6 +468,34 @@ async def api_companion_delete_config(mode: str, name: str):
             raise HTTPException(status_code=404, detail="Конфиг не найден")
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+# --------------------------------------------------------------------------- #
+# Teleop (Treelogic) — управление teleop_bridge
+# --------------------------------------------------------------------------- #
+@app.get("/api/teleop/status")
+async def api_teleop_status():
+    return await TELEOP.async_status()
+
+
+@app.put("/api/teleop/start")
+async def api_teleop_start():
+    ok = await TELEOP.start()
+    if ok:
+        await _emit("info", "Teleop запущен")
+    else:
+        await _emit("err", "Не удалось запустить Teleop")
+    return {"ok": ok}
+
+
+@app.put("/api/teleop/stop")
+async def api_teleop_stop():
+    ok = await TELEOP.stop()
+    if ok:
+        await _emit("info", "Teleop остановлен")
+    else:
+        await _emit("err", "Не удалось остановить Teleop")
+    return {"ok": ok}
 
 
 # --------------------------------------------------------------------------- #

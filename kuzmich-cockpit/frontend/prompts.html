@@ -39,6 +39,7 @@
   </div>
 </main>
 <script src="js/base.js"></script>
+<script src="js/api.js"></script>
 <script src="js/editor.js"></script>
 <script>
 'use strict';
@@ -65,9 +66,7 @@
 
   async function fetchPrompts() {
     try {
-      const res = await fetch('/api/prompts/list');
-      if (!res.ok) throw new Error('Ошибка загрузки списка');
-      const data = await res.json();
+      const data = await API.listPrompts();
       return data.prompts || [];
     } catch (e) {
       ed.showMsg('Не удалось загрузить список: ' + e.message, 'err');
@@ -102,9 +101,7 @@
 
   async function loadPrompt(name) {
     try {
-      const res = await fetch('/api/prompts/get/' + encodeURIComponent(name));
-      if (!res.ok) throw new Error('Промт не найден');
-      const data = await res.json();
+      const data = await API.getPrompt(name);
       ed.load(name, data.content || '');
       ed.showEditor();
       document.querySelectorAll('.prompt-item').forEach(el => {
@@ -127,25 +124,14 @@
 
   ed.bindAll({
     saveFn: async (name, content) => {
-      const res = await fetch('/api/prompts/save/' + encodeURIComponent(name), {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ content })
-      });
-      if (!res.ok) { const err = await res.json(); throw new Error(err.detail || 'Ошибка сохранения'); }
+      await API.savePrompt(name, content);
     },
     renameFn: async (oldName, newName) => {
-      const res = await fetch('/api/prompts/rename/' + encodeURIComponent(oldName), {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ new_name: newName })
-      });
-      if (!res.ok) { const err = await res.json(); throw new Error(err.detail || 'Ошибка переименования'); }
+      await API.renamePrompt(oldName, newName);
     },
     afterSave: renderList,
     deleteFn: async (name) => {
-      const res = await fetch('/api/prompts/delete/' + encodeURIComponent(name), { method: 'DELETE' });
-      if (!res.ok) { const err = await res.json(); throw new Error(err.detail || 'Ошибка удаления'); }
+      await API.deletePrompt(name);
     },
     afterDelete: autoSelectAfterDelete
   });
@@ -171,20 +157,12 @@
       if (!confirm('Есть несохранённые изменения. Сохранить перед выбором?')) return;
       await ed.save({
         saveFn: async (name, content) => {
-          const res = await fetch('/api/prompts/save/' + encodeURIComponent(name), {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ content })
-          });
-          if (!res.ok) { const err = await res.json(); throw new Error(err.detail || 'Ошибка сохранения'); }
+          await API.savePrompt(name, content);
         }
       });
     }
     try {
-      const res = await fetch('/api/prompts/select/' + encodeURIComponent(ed.current), {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'}
-      });
+      await API.selectPrompt(ed.current);
       if (!res.ok) { const err = await res.json(); throw new Error(err.detail || 'Ошибка выбора'); }
       sessionStorage.setItem('activePrompt', ed.current);
       ed.showMsg('Промт "' + ed.current + '" теперь активен', 'ok');
