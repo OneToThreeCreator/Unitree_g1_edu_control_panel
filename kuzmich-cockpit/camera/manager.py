@@ -67,16 +67,15 @@ class CameraManager:
 
     async def start(self) -> None:
         """Start camera manager — try to capture RealSense."""
-        from ..bridges.teleop import TELEOP
-
         if self._state not in (CameraState.STOPPED, CameraState.DISABLED):
             return
 
-        # Check if Teleop is already running
+        # Check if Teleop is already running (may be unavailable in standalone mode)
         teleop_running = False
         try:
+            from ..bridges.teleop import TELEOP
             teleop_running = await TELEOP.is_running()
-        except Exception:
+        except (ImportError, Exception):
             pass
 
         if teleop_running:
@@ -138,7 +137,10 @@ class CameraManager:
 
     async def _teleop_poll_loop(self) -> None:
         """Poll Teleop API to detect state changes."""
-        from ..bridges.teleop import TELEOP
+        try:
+            from ..bridges.teleop import TELEOP
+        except ImportError:
+            return  # standalone mode — no teleop bridge
 
         while True:
             try:

@@ -24,8 +24,8 @@ from .bridges.companion import COMPANION
 from .bridges.movement import MovementBridge
 from .bridges.head import HeadBridge
 from .bridges.teleop import TELEOP
-from .camera import router as camera_router, init_camera, get_camera_manager
-from .camera.config import CameraConfig
+from camera import router as camera_router, init_camera, get_camera_manager
+from camera.config import CameraConfig
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("cockpit")

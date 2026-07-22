@@ -17,10 +17,10 @@ from typing import Dict, List, Optional, Tuple
 
 log = logging.getLogger("cockpit.companion")
 
-# Путь к voice_robot (относительно корня проекта)
+# Путь к ai (voice_robot) — kuzmich-cockpit/ai
 # __file__ = .../kuzmich-cockpit/backend/bridges/companion.py
-# parent x4 = .../UNITREE_G1_EDU_ULTIMATE_D/
-VOICEROBOT_DIR = Path(__file__).resolve().parent.parent.parent.parent / "voice_robot"
+# parent x3 = .../kuzmich-cockpit/
+VOICEROBOT_DIR = Path(__file__).resolve().parent.parent.parent / "ai"
 KUZMICH_INI = VOICEROBOT_DIR / "base.ini"
 COMPANION_SCRIPT = VOICEROBOT_DIR / "kuzmich_companion.py"
 

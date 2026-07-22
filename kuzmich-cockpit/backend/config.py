@@ -20,8 +20,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List
 
-# Путь к voice_robot (относительно корня проекта)
-_VOICE_ROBOT_DIR = Path(__file__).resolve().parent.parent.parent / "voice_robot"
+# Путь к ai (voice_robot) — kuzmich-cockpit/ai
+_VOICE_ROBOT_DIR = Path(__file__).resolve().parent.parent / "ai"
 
 
 def _env_bool(name: str, default: bool) -> bool:
