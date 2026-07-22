@@ -50,7 +50,7 @@ async def _startup() -> None:
     movement.start()
     # Initialize camera module
     camera_config = CameraConfig()
-    init_camera(camera_config)
+    init_camera(camera_config, teleop_bridge=TELEOP)
     # Auto-start camera if not dry_run
     if not CONFIG.dry_run:
         cam = get_camera_manager()

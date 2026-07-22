@@ -33,8 +33,9 @@ class CameraManager:
     - Fan out frames to connected streaming clients
     """
 
-    def __init__(self, config: CameraConfig) -> None:
+    def __init__(self, config: CameraConfig, teleop_bridge: Any = None) -> None:
         self._config = config
+        self._teleop = teleop_bridge  # TeleopBridge instance (injected from app.py)
         self._state = CameraState.STOPPED
         self._active_backend: Optional[VideoBackend] = None
         self._local_backend: Optional[LocalBackend] = None
@@ -72,11 +73,11 @@ class CameraManager:
 
         # Check if Teleop is already running (may be unavailable in standalone mode)
         teleop_running = False
-        try:
-            from ..bridges.teleop import TELEOP
-            teleop_running = await TELEOP.is_running()
-        except (ImportError, Exception):
-            pass
+        if self._teleop:
+            try:
+                teleop_running = await self._teleop.is_running()
+            except Exception:
+                pass
 
         if teleop_running:
             log.info("Teleop already running, starting in RELAY mode")
@@ -137,14 +138,12 @@ class CameraManager:
 
     async def _teleop_poll_loop(self) -> None:
         """Poll Teleop API to detect state changes."""
-        try:
-            from ..bridges.teleop import TELEOP
-        except ImportError:
+        if not self._teleop:
             return  # standalone mode — no teleop bridge
 
         while True:
             try:
-                teleop_active = await TELEOP.is_preview_active()
+                teleop_active = await self._teleop.is_preview_active()
 
                 if teleop_active and self._state == CameraState.LOCAL:
                     await self._switch_to_relay()

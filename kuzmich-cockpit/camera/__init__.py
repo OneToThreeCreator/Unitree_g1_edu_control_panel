@@ -23,9 +23,9 @@ _ws_nal: Optional[WsNalStreamer] = None
 _ws_raw: Optional[WsRawStreamer] = None
 
 
-def init_camera(config: CameraConfig) -> None:
+def init_camera(config: CameraConfig, teleop_bridge: object = None) -> None:
     global _camera_manager, _ws_nal, _ws_raw
-    _camera_manager = CameraManager(config)
+    _camera_manager = CameraManager(config, teleop_bridge=teleop_bridge)
     _ws_nal = WsNalStreamer(_camera_manager)
     _ws_raw = WsRawStreamer(_camera_manager)
     log.info("Camera module initialized")
