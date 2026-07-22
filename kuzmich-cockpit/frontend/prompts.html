@@ -163,7 +163,6 @@
     }
     try {
       await API.selectPrompt(ed.current);
-      if (!res.ok) { const err = await res.json(); throw new Error(err.detail || 'Ошибка выбора'); }
       sessionStorage.setItem('activePrompt', ed.current);
       ed.showMsg('Промт "' + ed.current + '" теперь активен', 'ok');
       await renderList();

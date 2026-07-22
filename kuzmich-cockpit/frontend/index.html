@@ -460,6 +460,8 @@ async function updatePromptStatus() {
   }
 }
 // -------- Старт --------
+function tryVideo() { /* no-op: camera is toggled by user via camToggle */ }
+
 (async function() {
   try {
     cfg = await API.getConfig();

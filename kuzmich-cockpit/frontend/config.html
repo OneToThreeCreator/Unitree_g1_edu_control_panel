@@ -433,8 +433,6 @@
         const configs = await API.companionListConfigs(currentMode);
         if((configs.configs || []).includes(name)){
           if(!confirm('Файл "' + name + '" уже существует. Перезаписать?')) throw new Error('Отменено');
-        } else {
-          await API.companionCreateConfig(currentMode, name);
         }
       }
       await API.companionSaveConfig(currentMode, name, content);

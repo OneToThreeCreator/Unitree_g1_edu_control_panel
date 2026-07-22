@@ -266,7 +266,7 @@ async def api_get_active_prompt():
     except OSError:
         return {"active": None}
 
-@app.get("/api/prompts/get/{name}")
+@app.get("/api/prompts/{name}")
 async def api_get_prompt(name: str):
     try:
         content = prompt.read_prompt(name)
@@ -277,17 +277,29 @@ async def api_get_prompt(name: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.put("/api/prompts/{name}")
-async def api_save_prompt(name: str, data: dict):
-    content = data.get("content")
-    if content is None:
-        raise HTTPException(status_code=400, detail="Отсутствует поле 'content'")
-    try:
-        prompt.write_prompt(name, content)
-        return {"status": "ok"}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+async def api_save_or_rename_prompt(name: str, data: dict):
+    if "content" in data:
+        try:
+            prompt.write_prompt(name, data["content"])
+            return {"status": "ok"}
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=str(e))
+    elif "new_name" in data:
+        new_name = data["new_name"]
+        if not new_name:
+            raise HTTPException(status_code=400, detail="Отсутствует 'new_name'")
+        try:
+            prompt.rename_prompt(name, new_name)
+            return {"status": "ok"}
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail="Исходный промт не найден")
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+    raise HTTPException(status_code=400, detail="Отсутствует 'content' или 'new_name'")
 
-@app.delete("/api/prompts/delete/{name}")
+@app.delete("/api/prompts/{name}")
 async def api_delete_prompt(name: str):
     if prompt.delete_prompt(name):
         return {"status": "ok"}
@@ -303,21 +315,6 @@ async def api_select_prompt(name: str):
             raise HTTPException(status_code=500, detail="Не удалось создать ссылку")
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.put("/api/prompts/{old_name}/rename")
-async def api_rename_prompt(old_name: str, data: dict):
-    new_name = data.get("new_name")
-    if not new_name:
-        raise HTTPException(status_code=400, detail="Отсутствует 'new_name'")
-    try:
-        prompt.rename_prompt(old_name, new_name)
-        return {"status": "ok"}
-    except FileNotFoundError:
-        raise HTTPException(status_code=404, detail="Исходный промт не найден")
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -372,34 +369,6 @@ async def api_companion_list_configs(mode: str):
     return {"configs": COMPANION.list_configs(mode)}
 
 
-@app.put("/api/companion/config/{mode}/{name}")
-async def api_companion_create_config(mode: str, name: str, data: dict):
-    name = data.get("name", name)
-    if not name:
-        raise HTTPException(status_code=400, detail="Отсутствует 'name'")
-    try:
-        COMPANION.create_config(mode, name)
-        return {"status": "ok"}
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.put("/api/companion/config/{mode}/{old_name}/rename")
-async def api_companion_rename_config(mode: str, old_name: str, data: dict):
-    new_name = data.get("new_name", "")
-    if not new_name:
-        raise HTTPException(status_code=400, detail="Отсутствует 'new_name'")
-    try:
-        COMPANION.rename_config(mode, old_name, new_name)
-        return {"status": "ok"}
-    except FileNotFoundError:
-        raise HTTPException(status_code=404, detail="Исходный конфиг не найден")
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
 @app.get("/api/companion/models/{backend}")
 async def api_companion_list_models(backend: str):
     """Список моделей из models_dir для заданного бэкенда (llama/vllm)."""
@@ -434,7 +403,7 @@ async def api_companion_list_models(backend: str):
     return {"models": models}
 
 
-@app.get("/api/companion/config/{mode}/get/{name}")
+@app.get("/api/companion/config/{mode}/{name}")
 async def api_companion_get_config(mode: str, name: str):
     try:
         text = COMPANION.read_config(mode, name)
@@ -446,7 +415,19 @@ async def api_companion_get_config(mode: str, name: str):
 
 
 @app.put("/api/companion/config/{mode}/{name}")
-async def api_companion_save_config(mode: str, name: str, data: dict):
+async def api_companion_save_or_rename_config(mode: str, name: str, data: dict):
+    if "new_name" in data:
+        new_name = data["new_name"]
+        if not new_name:
+            raise HTTPException(status_code=400, detail="Отсутствует 'new_name'")
+        try:
+            COMPANION.rename_config(mode, name, new_name)
+            return {"status": "ok"}
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail="Исходный конфиг не найден")
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+    # Save (create or update) — content defaults to "" for create
     content_text = data.get("content", "")
     try:
         COMPANION.save_config_raw(mode, name, content_text)
@@ -459,7 +440,7 @@ async def api_companion_save_config(mode: str, name: str, data: dict):
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@app.delete("/api/companion/config/{mode}/delete/{name}")
+@app.delete("/api/companion/config/{mode}/{name}")
 async def api_companion_delete_config(mode: str, name: str):
     try:
         if COMPANION.delete_config(mode, name):

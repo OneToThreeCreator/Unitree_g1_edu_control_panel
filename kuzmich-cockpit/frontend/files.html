@@ -210,10 +210,6 @@
         ? (currentPath ? currentPath + '/' + name : name)
         : selectedItem.path;
       await API.saveFile(savePath, content);
-        method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({path: savePath, content: content})
-      });
-      if(!res.ok){ const err = await res.json(); throw new Error(err.detail || 'Ошибка'); }
     },
     renameFn: async (oldName, newName) => {
       await API.renameFile(selectedItem.path, newName);
