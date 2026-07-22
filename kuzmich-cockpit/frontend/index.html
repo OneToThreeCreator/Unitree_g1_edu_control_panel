@@ -39,27 +39,26 @@
         <img id="feed" alt="" style="display:none">
         <div id="feedph" class="ph">Нет видеопотока.</div>
       </div>
-      <div class="server-toggle-row">
-        <label class="switch">
-          <input type="checkbox" id="camServerToggle">
-          <span class="slider"></span>
-        </label>
-        <span id="camServerLabel">Camera Share Server: OFF</span>
-      </div>
-      <div class="cam-toggle-row">
-        <label class="switch">
-          <input type="checkbox" id="camToggle">
-          <span class="slider"></span>
-        </label>
-        <span id="camLabel">Видео: выкл</span>
+      <div class="cam-controls-row">
+        <div class="server-toggle-row">
+          <label class="switch">
+            <input type="checkbox" id="camServerToggle">
+            <span class="slider"></span>
+          </label>
+          <span id="camServerLabel">Camera Share Server: OFF</span>
+        </div>
+        <div class="cam-toggle-row">
+          <label class="switch">
+            <input type="checkbox" id="camToggle">
+            <span class="slider"></span>
+          </label>
+          <span id="camLabel">Видео: выкл</span>
+        </div>
       </div>
       <div class="tel">
         <div><span>vx (вперёд)</span><b id="tvx">0.00</b></div>
         <div><span>vy (вбок)</span><b id="tvy">0.00</b></div>
         <div><span>wz (поворот)</span><b id="twz">0.00</b></div>
-      </div>
-      <div class="row" style="margin-top:10px">
-        <button class="act" id="camRetry">↻ Подключить видео</button>
       </div>
     </div>
   </div>
@@ -473,8 +472,6 @@ $("#camToggle").onclick = async () => {
   updateCamToggleState();
 };
 
-$("#camRetry").onclick = () => { if (camActive) connectVideo(); };
-
 // -------- Журнал --------
 function logEvent(m){ const el=document.createElement("div"); el.className="log "+m.level;
   const ts=new Date((m.ts||Date.now()/1000)*1000).toLocaleTimeString();
@@ -500,12 +497,28 @@ function tryVideo() { /* no-op: camera is toggled by user via camToggle */ }
   try {
     cfg = await API.getConfig();
     buildButtons();
-    tryVideo();
     connect();
     updatePromptStatus();
     fetchCompanionStatus();
+    // Sync camera server state with backend
+    await syncCameraServerState();
   } catch(e) { console.error('Init failed:', e); }
 })();
+
+async function syncCameraServerState() {
+  try {
+    const st = await API.cameraStatus();
+    const serverOn = st.state === "local" || st.state === "relay";
+    camServerActive = serverOn;
+    const srvToggle = $("#camServerToggle");
+    const srvLabel = $("#camServerLabel");
+    srvToggle.checked = serverOn;
+    srvLabel.textContent = serverOn ? "Camera Share Server: ON" : "Camera Share Server: OFF";
+    updateCamToggleState();
+  } catch(e) {
+    console.warn("Camera status sync failed:", e);
+  }
+}
 
 async function fetchCompanionStatus(){
   try{
