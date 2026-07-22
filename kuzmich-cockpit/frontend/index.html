@@ -68,11 +68,11 @@
     <div class="card">
       <h2>Движение</h2>
       <div id="pad" class="pad"><div class="stick"></div><div class="center-mark"></div><div class="knob"></div></div>
-      <div class="hint">Джойстик: вперёд/назад + вбок · Поворот: слайдер ниже · Пробел — стоп</div>
-      <div class="turn-slider">
-        <label>← поворот</label>
-        <input id="turn" type="range" min="-100" max="100" value="0">
-        <label>поворот →</label>
+      <div class="hint">Джойстик: вперёд/назад + вбок · Поворот: стик ниже · Пробел — стоп</div>
+      <div class="turn-row">
+        <label class="turn-label">← поворот</label>
+        <div id="turnStick" class="stick-1d"><div class="stick-1d-knob"></div></div>
+        <label class="turn-label">поворот →</label>
       </div>
       <div class="slider">
         <label>Скорость</label>
@@ -157,7 +157,7 @@
 <script>
 'use strict';
 let ws=null, cfg=null, mode="manual", estop=false, aiMode="off", companionConfig=null, lastAiMode="internal";
-let move={vx:0,vy:0,wz:0}, padActive=false, keyVec={f:0,s:0,l:0,r:0,sl:0,sr:0};
+let move={vx:0,vy:0,wz:0}, padActive=false, turnActive=false, keyVec={f:0,s:0,l:0,r:0,sl:0,sr:0};
 
 // -------- WebSocket --------
 function connect(){
@@ -209,6 +209,7 @@ function motionBlocked(){ return estop || mode==="teleop"; }
 function refreshLocks(){
   const why = estop ? "Активен аварийный стоп" : (mode==="teleop"?"Активна VR-телеоперация":"");
   $("#pad").classList.toggle("dis",motionBlocked());
+  turnStick.classList.toggle("dis",motionBlocked());
   $("#lockMove").textContent=why; $("#lockArm").textContent=why;
   document.querySelectorAll("#armBtns button,#handBtns button").forEach(b=>b.disabled=motionBlocked());
 }
@@ -221,6 +222,7 @@ $("#stopBtn").onclick=async()=>{move={vx:0,vy:0,wz:0};turnEl.value=0;try{await A
 // -------- Джойстик (vx + vy) --------
 const pad=$("#pad"), knob=pad.querySelector(".knob"), stick=pad.querySelector(".stick");
 function padSet(nx,ny){ // nx,ny in [-1,1]
+  if(!cfg)return;
   const r=pad.clientWidth/2-33;
   knob.style.left=(50+nx*r/pad.clientWidth*100)+"%";
   knob.style.top=(50+ny*r/pad.clientWidth*100)+"%";
@@ -243,14 +245,26 @@ pad.addEventListener("pointermove",e=>{ if(padActive) padXY(e); });
 pad.addEventListener("pointerup",()=>{ padActive=false; pad.classList.remove("active"); padReset(); });
 pad.addEventListener("pointercancel",()=>{ padActive=false; pad.classList.remove("active"); padReset(); });
 
-// -------- Слайдер поворота --------
-const turnEl = $("#turn");
-function readTurn(){
-  const v = parseInt(turnEl.value);
-  const spd = parseInt($("#spd").value)/100;
-  move.wz = (v/100) * cfg.limits.vyaw * spd;
+// -------- 1D-стик поворота (с возвратом в 0) --------
+const turnStick=$("#turnStick"), turnKnob=turnStick.querySelector(".stick-1d-knob");
+function turnSet(nx){ // nx in [-1,1]
+  if(!cfg)return;
+  const r=turnStick.clientWidth/2-22;
+  turnKnob.style.left=(50+nx*r/turnStick.clientWidth*100)+"%";
+  const spd=parseInt($("#spd").value)/100;
+  move.wz=nx*cfg.limits.vyaw*spd;
 }
-turnEl.addEventListener("input", readTurn);
+function turnReset(){ turnKnob.style.left="50%"; move.wz=0; }
+function turnX(ev){
+  const rc=turnStick.getBoundingClientRect();
+  let x=(ev.clientX-rc.left)/rc.width*2-1;
+  if(Math.abs(x)>1) x=Math.sign(x);
+  turnSet(x);
+}
+turnStick.addEventListener("pointerdown",e=>{ if(motionBlocked())return; turnActive=true; turnStick.classList.add("active"); turnStick.setPointerCapture(e.pointerId); turnX(e); });
+turnStick.addEventListener("pointermove",e=>{ if(turnActive) turnX(e); });
+turnStick.addEventListener("pointerup",()=>{ turnActive=false; turnStick.classList.remove("active"); turnReset(); });
+turnStick.addEventListener("pointercancel",()=>{ turnActive=false; turnStick.classList.remove("active"); turnReset(); });
 
 // -------- Клавиатура --------
 const keymap={KeyW:"f",KeyS:"s",KeyA:"sl",KeyD:"sr",KeyQ:"l",KeyE:"r"};
@@ -261,7 +275,7 @@ addEventListener("keydown",e=>{
 });
 addEventListener("keyup",e=>{ if(keymap[e.code])keyVec[keymap[e.code]]=0; });
 function keyToMove(){
-  if(padActive||motionBlocked())return;
+  if(!cfg||padActive||turnActive||motionBlocked())return;
   const spd=parseInt($("#spd").value)/100;
   const f=keyVec.f-keyVec.s, yaw=keyVec.l-keyVec.r, strafe=keyVec.sl-keyVec.sr;
   if(f||yaw||strafe){ move.vx=f*cfg.limits.vx*spd; move.wz=yaw*cfg.limits.vyaw*spd; move.vy=strafe*cfg.limits.vy*spd; }
