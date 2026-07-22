@@ -39,12 +39,19 @@
         <img id="feed" alt="" style="display:none">
         <div id="feedph" class="ph">Нет видеопотока.</div>
       </div>
+      <div class="server-toggle-row">
+        <label class="switch">
+          <input type="checkbox" id="camServerToggle">
+          <span class="slider"></span>
+        </label>
+        <span id="camServerLabel">Camera Share Server: OFF</span>
+      </div>
       <div class="cam-toggle-row">
         <label class="switch">
           <input type="checkbox" id="camToggle">
           <span class="slider"></span>
         </label>
-        <span id="camLabel">Камера выкл</span>
+        <span id="camLabel">Видео: выкл</span>
       </div>
       <div class="tel">
         <div><span>vx (вперёд)</span><b id="tvx">0.00</b></div>
@@ -355,26 +362,35 @@ function addMsg(who,text){ const d=document.createElement("div"); d.className="m
 
 // -------- Видео --------
 let camActive = false, camWs = null, camJmuxer = null;
+let camServerActive = false;
 
 function updateCamStatus(status) {
   const el = $("#camStatus");
-  const label = $("#camLabel");
   if (!camActive) {
     el.textContent = "● Offline";
     el.className = "cam-status offline";
-    label.textContent = "Камера выкл";
   } else if (status === "live") {
     el.textContent = "● Live";
     el.className = "cam-status live";
-    label.textContent = "Камера вкл";
   } else if (status === "error") {
     el.textContent = "● Error";
     el.className = "cam-status error";
-    label.textContent = "Камера вкл";
   } else {
     el.textContent = "● Connecting...";
     el.className = "cam-status connecting";
-    label.textContent = "Камера вкл";
+  }
+}
+
+function updateCamToggleState() {
+  const camToggle = $("#camToggle");
+  const camLabel = $("#camLabel");
+  if (!camServerActive) {
+    camToggle.disabled = true;
+    camLabel.textContent = "Видео: сервер выкл";
+    if (camActive) { camActive = false; disconnectVideo(); }
+  } else {
+    camToggle.disabled = false;
+    camLabel.textContent = camActive ? "Видео: вкл" : "Видео: выкл";
   }
 }
 
@@ -401,7 +417,7 @@ async function connectVideo() {
       $("#feedph").style.display = "none";
     };
     camWs.onmessage = (e) => {
-      if (typeof e.data === "string") return; // JSON metadata
+      if (typeof e.data === "string") return;
       if (!window.JMuxer) return;
       if (!camJmuxer) {
         camJmuxer = new JMuxer({
@@ -411,15 +427,12 @@ async function connectVideo() {
           fps: 30,
         });
       }
-      camJmuxer.feed({
-        video: new Uint8Array(e.data),
-      });
+      camJmuxer.feed({ video: new Uint8Array(e.data) });
       updateCamStatus("live");
     };
     camWs.onerror = () => updateCamStatus("error");
     camWs.onclose = () => { if (camActive) updateCamStatus("error"); };
   } catch(e) {
-    // Fallback to MJPEG
     const img = $("#feed");
     img.onload = () => { img.style.display = ""; $("#feedph").style.display = "none"; updateCamStatus("live"); };
     img.onerror = () => updateCamStatus("error");
@@ -427,16 +440,37 @@ async function connectVideo() {
   }
 }
 
+// Camera Share Server toggle — controls backend server
+$("#camServerToggle").onclick = async () => {
+  camServerActive = !camServerActive;
+  const label = $("#camServerLabel");
+  if (camServerActive) {
+    await API.cameraStart().catch(()=>{});
+    label.textContent = "Camera Share Server: ON";
+    logEvent({t:"event",level:"info",msg:"Camera server запущен",ts:Date.now()/1000});
+  } else {
+    disconnectVideo();
+    camActive = false;
+    $("#camToggle").checked = false;
+    await API.cameraStop().catch(()=>{});
+    label.textContent = "Camera Share Server: OFF";
+    updateCamStatus("");
+    logEvent({t:"event",level:"info",msg:"Camera server остановлен",ts:Date.now()/1000});
+  }
+  updateCamToggleState();
+};
+
+// Video display toggle — client-side only
 $("#camToggle").onclick = async () => {
+  if (!camServerActive) return;
   camActive = !camActive;
   if (camActive) {
-    await API.cameraStart().catch(()=>{});
     connectVideo();
   } else {
     disconnectVideo();
-    await API.cameraStop().catch(()=>{});
   }
   updateCamStatus(camActive ? "connecting" : "");
+  updateCamToggleState();
 };
 
 $("#camRetry").onclick = () => { if (camActive) connectVideo(); };
