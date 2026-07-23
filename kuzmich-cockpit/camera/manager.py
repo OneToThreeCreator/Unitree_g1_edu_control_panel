@@ -120,9 +120,9 @@ class CameraManager:
         # Color pipeline
         color_pipeline = (
             f"appsrc name=src is-live=true format=time "
-            f"video/x-raw,format=BGR,width={w},height={h},framerate={fps}/1 "
+            f"! video/x-raw,format=BGR,width={w},height={h},framerate={fps}/1 "
             f"! videoconvert ! nvvideoconvert "
-            f"video/x-raw(memory:NVMM),format=NV12 "
+            f"! video/x-raw(memory:NVMM),format=NV12 "
             f"! {encoder} bitrate={bitrate} ! h265parse "
             f"! tee name=t "
             f"t. ! queue ! webrtcbin stun-server={stun} "
@@ -155,7 +155,7 @@ class CameraManager:
             dw, dh, dfps = self._config.depth_width, self._config.depth_height, self._config.depth_fps
             depth_pipeline = (
                 f"appsrc name=depth_src is-live=true format=time "
-                f"video/x-raw,format=GRAY16_LE,width={dw},height={dh},framerate={dfps}/1 "
+                f"! video/x-raw,format=GRAY16_LE,width={dw},height={dh},framerate={dfps}/1 "
                 f"! videoconvert "
                 f"! websocketsink host=0.0.0.0 port={self._config.ws_depth_port}"
             )
