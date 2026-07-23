@@ -2,26 +2,48 @@ use std::env;
 use std::path::PathBuf;
 
 fn main() {
-    // Tell cargo to re-run if wrapper changes
     println!("cargo:rerun-if-changed=wrapper.h");
 
-    // Find librealsense2
-    let output = std::process::Command::new("pkg-config")
-        .args(["--cflags", "--libs", "librealsense2"])
+    // Try pkg-config first
+    let found = std::process::Command::new("pkg-config")
+        .args(["--cflags", "librealsense2"])
         .output()
-        .expect("Failed to run pkg-config. Is librealsense2-dev installed?");
+        .map(|o| o.status.success())
+        .unwrap_or(false);
 
-    if !output.status.success() {
-        // Fallback: try common paths
-        println!("cargo:rustc-link-search=native=/usr/lib/aarch64-linux-gnu");
-        println!("cargo:rustc-link-lib=dylib=realsense2");
-    } else {
-        let cflags = String::from_utf8_lossy(&output.stdout);
-        for flag in cflags.split_whitespace() {
+    if found {
+        // pkg-config found it — use its flags
+        let output = std::process::Command::new("pkg-config")
+            .args(["--cflags", "--libs", "librealsense2"])
+            .output()
+            .unwrap();
+        let flags = String::from_utf8_lossy(&output.stdout);
+        for flag in flags.split_whitespace() {
             if flag.starts_with("-I") {
                 println!("cargo:include={}", &flag[2..]);
+            } else if flag.starts_with("-L") {
+                println!("cargo:rustc-link-search=native={}", &flag[2..]);
+            } else if flag.starts_with("-l") {
+                println!("cargo:rustc-link-lib=dylib={}", &flag[2..]);
             }
         }
+    } else {
+        // Fallback: search common paths
+        let mut found_path = false;
+        for p in &["/usr/include", "/usr/local/include", "/opt/librealsense2/include"] {
+            if std::path::Path::new(&format!("{}/librealsense2/rs.h", p)).exists() {
+                println!("cargo:include={}", p);
+                found_path = true;
+                break;
+            }
+        }
+        if !found_path {
+            eprintln!("WARNING: librealsense2 headers not found.");
+            eprintln!("Install: sudo apt install librealsense2-dev");
+            eprintln!("Or: build librealsense2 from source");
+            eprintln!("Build will likely fail without RealSense headers.");
+        }
+        println!("cargo:rustc-link-lib=dylib=realsense2");
     }
 
     // Generate bindings
@@ -29,7 +51,7 @@ fn main() {
         .header("wrapper.h")
         .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
         .generate()
-        .expect("Unable to generate bindings");
+        .expect("Unable to generate bindings. Is librealsense2-dev installed?");
 
     let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
     bindings
