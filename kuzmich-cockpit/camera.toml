@@ -58,6 +58,7 @@ stun_url = "stun:stun.l.google.com:19302"
 [websocket]
 raw_bgr_port = 8082    # Raw BGR frames для YOLO
 depth_port = 8083      # Raw depth Z16 для YOLO+3D (LOCAL mode only)
+mjpeg_port = 8084      # MJPEG fallback (GStreamer jpegenc → websocketserver)
 
 [teleop]
 api_url = "http://192.168.1.102"

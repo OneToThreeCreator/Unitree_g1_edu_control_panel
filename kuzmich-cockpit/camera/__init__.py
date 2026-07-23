@@ -73,18 +73,18 @@ async def camera_snapshot():
 
 @router.get("/stream.mjpg")
 async def camera_stream_mjpeg():
-    """MJPEG fallback — proxies from legacy MJPEG source (port 8091)."""
+    """MJPEG fallback — proxies from GStreamer websocketserver:8084."""
     if _camera_manager is None:
         return Response(status_code=503, content=b"camera module not initialized")
     import httpx
     from typing import AsyncIterator
 
-    mjpeg_url = _camera_manager.config.video_mjpeg_url
+    mjpeg_ws_port = 8084  # GStreamer websocketserver MJPEG port
 
     async def gen() -> AsyncIterator[bytes]:
         try:
             async with httpx.AsyncClient(timeout=None) as client:
-                async with client.stream("GET", f"{mjpeg_url}/stream.mjpg") as resp:
+                async with client.stream("GET", f"http://127.0.0.1:{mjpeg_ws_port}/stream.mjpg") as resp:
                     async for chunk in resp.aiter_bytes():
                         yield chunk
         except Exception as e:

@@ -24,7 +24,7 @@ pub async fn run_pipeline(
     // --- Color pipeline ---
     // appsrc → videoconvert → nvvideoconvert → encoder → tee
     //   ├── webrtcbin → WebRTC (browser)
-    //   ├── jpegenc → multipartmux → appsink (MJPEG fallback)
+    //   ├── jpegenc → multipartmux → websocketserver:8084 (MJPEG fallback)
     //   └── videoconvert → websocketserver:8082 (raw BGR for YOLO)
     let color_pipeline = format!(
         "appsrc name=src is-live=true format=time \
@@ -36,7 +36,8 @@ pub async fn run_pipeline(
          ! h265parse \
          ! tee name=t \
          t. ! queue ! webrtcbin stun-server={} \
-         t. ! queue ! jpegenc ! multipartmux boundary=frame ! appsink name=mjpeg \
+         t. ! queue ! jpegenc ! multipartmux boundary=frame \
+         ! websocketserver host=0.0.0.0 port=8084 \
          t. ! queue ! videoconvert ! video/x-raw,format=BGR \
          ! websocketserver host=0.0.0.0 port=8082",
         capture.width, capture.height, capture.fps,
