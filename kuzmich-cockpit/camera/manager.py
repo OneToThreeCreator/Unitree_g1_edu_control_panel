@@ -3,13 +3,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import time
 from enum import Enum
 from typing import Any, Dict, Optional
 
-from .backends.base import BackendType, Frame, VideoBackend
-from .backends.local import LocalBackend
-from .backends.teleop import TeleopBackend
 from .config import CameraConfig
 
 log = logging.getLogger("cockpit.camera.manager")
@@ -24,35 +20,32 @@ class CameraState(str, Enum):
 
 
 class CameraManager:
-    """Central camera lifecycle manager.
+    """Camera lifecycle manager.
 
-    Responsibilities:
-    - Track Teleop active/inactive state (polling)
-    - Manage exclusive camera access (RealSense is single-connection)
-    - Coordinate backend switching
-    - Fan out frames to connected streaming clients
+    State machine: STOPPED → DISABLED → LOCAL ↔ RELAY → STOPPED
+
+    - LOCAL: Rust bridge captures from RealSense, GStreamer encodes H.265
+    - RELAY: Teleop captures RealSense, we relay H.265 stream
+    - DISABLED: No camera server, legacy clients can use RealSense directly
     """
 
-    def __init__(self, config: CameraConfig, teleop_bridge: Any = None) -> None:
+    def __init__(self, config: CameraConfig, teleop_bridge: object = None) -> None:
         self._config = config
-        self._teleop = teleop_bridge  # TeleopBridge instance (injected from app.py)
+        self._teleop = teleop_bridge
         self._state = CameraState.STOPPED
-        self._active_backend: Optional[VideoBackend] = None
-        self._local_backend: Optional[LocalBackend] = None
-        self._teleop_backend: Optional[TeleopBackend] = None
-        self._frame_subscribers: Dict[str, asyncio.Queue[Frame]] = {}
-        self._raw_subscribers: Dict[str, asyncio.Queue[Frame]] = {}
-        self._lock = asyncio.Lock()
         self._poll_task: Optional[asyncio.Task] = None
-        self._broadcast_task: Optional[asyncio.Task] = None
 
     @property
     def state(self) -> CameraState:
         return self._state
 
     @property
-    def active_backend_type(self) -> Optional[BackendType]:
-        return self._active_backend.backend_type if self._active_backend else None
+    def active_backend_type(self) -> Optional[str]:
+        if self._state == CameraState.LOCAL:
+            return "local"
+        if self._state == CameraState.RELAY:
+            return "teleop"
+        return None
 
     @property
     def config(self) -> CameraConfig:
@@ -61,17 +54,15 @@ class CameraManager:
     def status(self) -> Dict[str, Any]:
         return {
             "state": self._state.value,
-            "backend": self.active_backend_type.value if self.active_backend_type else None,
-            "clients": len(self._frame_subscribers),
-            "raw_clients": len(self._raw_subscribers),
+            "backend": self.active_backend_type,
         }
 
     async def start(self) -> None:
-        """Start camera manager — try to capture RealSense."""
+        """Start camera manager."""
         if self._state not in (CameraState.STOPPED, CameraState.DISABLED):
             return
 
-        # Check if Teleop is already running (may be unavailable in standalone mode)
+        # Check if Teleop is already running
         teleop_running = False
         if self._teleop:
             try:
@@ -80,142 +71,51 @@ class CameraManager:
                 pass
 
         if teleop_running:
-            log.info("Teleop already running, starting in RELAY mode")
-            await self._switch_to_relay()
+            log.info("Teleop already running → RELAY mode")
+            self._state = CameraState.RELAY
         else:
-            log.info("Starting in LOCAL mode")
-            await self._switch_to_local()
+            log.info("Starting LOCAL mode")
+            self._state = CameraState.LOCAL
 
         # Start Teleop state polling
         if self._poll_task is None or self._poll_task.done():
             self._poll_task = asyncio.create_task(self._teleop_poll_loop())
 
-        # Start frame broadcast loop
-        if self._broadcast_task is None or self._broadcast_task.done():
-            self._broadcast_task = asyncio.create_task(self._broadcast_loop())
+        # TODO: Start Rust bridge + GStreamer pipeline
 
     async def stop(self) -> None:
-        """Stop camera server -> DISABLED mode (legacy clients can use RealSense)."""
+        """Stop camera server → DISABLED."""
         if self._poll_task:
             self._poll_task.cancel()
             self._poll_task = None
-        if self._broadcast_task:
-            self._broadcast_task.cancel()
-            self._broadcast_task = None
 
-        async with self._lock:
-            if self._active_backend and self._active_backend.is_active:
-                await self._active_backend.stop()
-            self._active_backend = None
-            self._local_backend = None
-            self._teleop_backend = None
-            self._state = CameraState.DISABLED
+        self._state = CameraState.DISABLED
+        log.info("Camera stopped → DISABLED")
 
-        log.info("Camera stopped -> DISABLED")
+        # TODO: Stop Rust bridge + GStreamer pipeline
 
     async def shutdown(self) -> None:
-        """Fully stop camera manager."""
         await self.stop()
         self._state = CameraState.STOPPED
 
-    def subscribe(self, client_id: str) -> asyncio.Queue[Frame]:
-        q: asyncio.Queue[Frame] = asyncio.Queue(maxsize=10)
-        self._frame_subscribers[client_id] = q
-        return q
-
-    def unsubscribe(self, client_id: str) -> None:
-        self._frame_subscribers.pop(client_id, None)
-
-    def subscribe_raw(self, client_id: str) -> asyncio.Queue[Frame]:
-        q: asyncio.Queue[Frame] = asyncio.Queue(maxsize=5)
-        self._raw_subscribers[client_id] = q
-        return q
-
-    def unsubscribe_raw(self, client_id: str) -> None:
-        self._raw_subscribers.pop(client_id, None)
-
-    # --- Internal ---
+    async def snapshot_jpeg(self) -> Optional[bytes]:
+        # TODO: Get from GStreamer appsink
+        return None
 
     async def _teleop_poll_loop(self) -> None:
-        """Poll Teleop API to detect state changes."""
         if not self._teleop:
-            return  # standalone mode — no teleop bridge
-
+            return
         while True:
             try:
-                # Use is_running() (checks /api/services) — more reliable than
-                # is_preview_active() which may not reflect actual service state
                 teleop_active = await self._teleop.is_running()
-
                 if teleop_active and self._state == CameraState.LOCAL:
-                    log.info("Teleop detected as running, switching to RELAY")
-                    await self._switch_to_relay()
+                    log.info("Teleop detected → RELAY mode")
+                    self._state = CameraState.RELAY
+                    # TODO: Switch GStreamer pipeline to relay mode
                 elif not teleop_active and self._state == CameraState.RELAY:
-                    log.info("Teleop detected as stopped, switching to LOCAL")
-                    await self._switch_to_local()
-
+                    log.info("Teleop stopped → LOCAL mode")
+                    self._state = CameraState.LOCAL
+                    # TODO: Switch GStreamer pipeline to local mode
             except Exception as e:
                 log.debug("Teleop poll error: %s", e)
-
-            await asyncio.sleep(self._config.teleop_poll_interval_s)
-
-    async def _switch_to_relay(self) -> None:
-        """Switch from local capture to Teleop relay."""
-        async with self._lock:
-            self._state = CameraState.SWITCHING
-
-            # Stop local backend (releases RealSense)
-            if self._local_backend and self._local_backend.is_active:
-                await self._local_backend.stop()
-                self._local_backend = None
-                # Wait for RealSense device to fully release
-                await asyncio.sleep(1.0)
-
-            # Start Teleop relay
-            self._teleop_backend = TeleopBackend(self._config)
-            await self._teleop_backend.start()
-            self._active_backend = self._teleop_backend
-            self._state = CameraState.RELAY
-
-            log.info("Camera: switched to RELAY mode (Teleop active)")
-
-    async def _switch_to_local(self) -> None:
-        """Switch from Teleop relay to local capture."""
-        async with self._lock:
-            self._state = CameraState.SWITCHING
-
-            # Stop Teleop backend
-            if self._teleop_backend and self._teleop_backend.is_active:
-                await self._teleop_backend.stop()
-                self._teleop_backend = None
-                # Wait for RealSense device to fully release (if Teleop held it)
-                await asyncio.sleep(1.0)
-
-            # Start local capture
-            self._local_backend = LocalBackend(self._config)
-            try:
-                await self._local_backend.start()
-            except Exception as e:
-                log.error("Failed to start local capture: %s", e)
-                self._state = CameraState.DISABLED
-                return
-
-            self._active_backend = self._local_backend
-            self._state = CameraState.LOCAL
-
-            log.info("Camera: switched to LOCAL mode (Teleop inactive)")
-
-    async def _broadcast_loop(self) -> None:
-        """Pull frames from active backend, push to all subscribers."""
-        while True:
-            if self._active_backend and self._active_backend.is_active:
-                async for frame in self._active_backend.frames():
-                    for client_id, queue in self._frame_subscribers.items():
-                        if queue.full():
-                            try:
-                                queue.get_nowait()
-                            except asyncio.QueueEmpty:
-                                pass
-                        queue.put_nowait(frame)
-            else:
-                await asyncio.sleep(0.1)
+            await asyncio.sleep(self._config.teleop.poll_interval)

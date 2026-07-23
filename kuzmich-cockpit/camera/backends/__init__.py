@@ -1,4 +1,4 @@
-"""Abstract video backend interface and shared types."""
-from .base import BackendType, Frame, VideoBackend
+"""Camera backends — Teleop relay."""
+from .teleop import TeleopBackend
 
-__all__ = ["BackendType", "Frame", "VideoBackend"]
+__all__ = ["TeleopBackend"]

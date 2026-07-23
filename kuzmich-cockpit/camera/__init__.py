@@ -10,22 +10,18 @@ from fastapi import APIRouter, HTTPException, Query, Response, WebSocket
 from fastapi.responses import StreamingResponse
 
 from .config import CameraConfig
-from .manager import CameraManager, CameraState
-from .streaming.mjpeg import MjpegStreamer
-from .streaming.ws_raw import WsRawStreamer
+from .manager import CameraManager
 
 log = logging.getLogger("cockpit.camera")
 
 router = APIRouter(prefix="/api/camera", tags=["camera"])
 
 _camera_manager: Optional[CameraManager] = None
-_ws_raw: Optional[WsRawStreamer] = None
 
 
 def init_camera(config: CameraConfig, teleop_bridge: object = None) -> None:
-    global _camera_manager, _ws_raw
+    global _camera_manager
     _camera_manager = CameraManager(config, teleop_bridge=teleop_bridge)
-    _ws_raw = WsRawStreamer(_camera_manager)
     log.info("Camera module initialized")
 
 
@@ -75,28 +71,11 @@ async def camera_snapshot():
 
 @router.get("/stream.mjpg")
 async def camera_stream_mjpeg():
+    """MJPEG fallback — served by GStreamer pipeline."""
     if _camera_manager is None:
         return Response(status_code=503, content=b"camera module not initialized")
-
-    client_id = f"mjpeg-{uuid4().hex[:8]}"
-
-    async def gen():
-        queue = _camera_manager.subscribe(client_id)
-        try:
-            while True:
-                frame = await queue.get()
-                if frame.format == "jpeg":
-                    header = (
-                        b"--frame\r\n"
-                        b"Content-Type: image/jpeg\r\n"
-                    ) + f"Content-Length: {len(frame.data)}\r\n\r\n".encode()
-                    yield header + frame.data + b"\r\n"
-        finally:
-            _camera_manager.unsubscribe(client_id)
-
-    return StreamingResponse(
-        gen(), media_type="multipart/x-mixed-replace; boundary=frame"
-    )
+    # TODO: proxy from GStreamer MJPEG appsink
+    return Response(status_code=501, content=b"MJPEG via GStreamer not yet implemented")
 
 
 # --- WebRTC signaling ---
@@ -108,17 +87,16 @@ async def webrtc_offer(data: Dict[str, Any]):
     if _camera_manager is None:
         raise HTTPException(503, "Camera module not initialized")
     # TODO: implement GStreamer webrtcbin signaling
-    # For now, return a placeholder
     return {"error": "WebRTC not yet implemented", "hint": "Use /stream.mjpg fallback"}
 
 
-# --- WebSocket raw BGR ---
+# --- WebSocket raw BGR (for YOLO) ---
 
 
 @router.websocket("/ws/raw")
 async def ws_raw(ws: WebSocket, depth: bool = Query(False)):
-    """WebSocket raw BGR frames (for YOLO and other local consumers)."""
-    if _ws_raw is None:
-        await ws.close(code=1013, reason="Camera not initialized")
-        return
-    await _ws_raw.handle(ws, depth)
+    """WebSocket raw BGR frames — served by GStreamer appsink."""
+    # TODO: proxy from GStreamer appsink
+    await ws.accept()
+    await ws.send_json({"error": "Raw BGR via GStreamer not yet implemented"})
+    await ws.close()

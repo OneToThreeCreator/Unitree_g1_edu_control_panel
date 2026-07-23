@@ -5,35 +5,24 @@ import asyncio
 import logging
 import threading
 import time
-from typing import AsyncIterator
 
 import websocket
-
-from .base import BackendType, Frame, VideoBackend
-from ..config import CameraConfig
 
 log = logging.getLogger("cockpit.camera.teleop")
 
 
-class TeleopBackend(VideoBackend):
-    """Relay video from Treelogic Teleop's WebSocket preview.
+class TeleopBackend:
+    """Relay H.265 stream from Teleop's WebSocket preview.
 
     Uses websocket-client (sync) in a background thread because
-    Teleop's RobotAdmin server responds HTTP/1.0 which the async
-    websockets library doesn't accept.
+    Teleop's RobotAdmin server responds HTTP/1.0.
     """
 
-    def __init__(self, config: CameraConfig) -> None:
-        self._config = config
+    def __init__(self, teleop_ws_url: str, codec: str = "h265") -> None:
+        self._ws_url = teleop_ws_url
+        self._codec = codec
         self._running = False
-        self._frame_queue: asyncio.Queue[Frame] = asyncio.Queue(maxsize=10)
-        self._ws: websocket.WebSocketApp | None = None
-        self._thread: threading.Thread | None = None
-        self._codec = config.teleop_codec
-
-    @property
-    def backend_type(self) -> BackendType:
-        return BackendType.TELEOP
+        self._thread: Optional[threading.Thread] = None
 
     @property
     def is_active(self) -> bool:
@@ -43,35 +32,21 @@ class TeleopBackend(VideoBackend):
         self._running = True
         self._thread = threading.Thread(target=self._run_ws, daemon=True)
         self._thread.start()
-        log.info("TeleopBackend started, connecting to %s", self._config.teleop_ws_url)
+        log.info("TeleopBackend started, connecting to %s", self._ws_url)
 
     async def stop(self) -> None:
         self._running = False
-        if self._ws:
-            try:
-                self._ws.close()
-            except Exception:
-                pass
-            self._ws = None
         if self._thread:
             self._thread.join(timeout=3.0)
             self._thread = None
         log.info("TeleopBackend stopped")
-
-    async def frames(self) -> AsyncIterator[Frame]:
-        while self._running:
-            try:
-                frame = await asyncio.wait_for(self._frame_queue.get(), timeout=2.0)
-                yield frame
-            except asyncio.TimeoutError:
-                continue
 
     def _run_ws(self) -> None:
         """Background thread: run websocket-client reconnect loop."""
         delay = 1.0
         max_delay = 10.0
         while self._running:
-            url = f"{self._config.teleop_ws_url}?codec={self._codec}"
+            url = f"{self._ws_url}?codec={self._codec}"
 
             def on_open(ws):
                 nonlocal delay
@@ -79,23 +54,9 @@ class TeleopBackend(VideoBackend):
                 log.info("TeleopBackend connected to %s", url)
 
             def on_message(ws, message):
-                if not self._running:
-                    return
-                if isinstance(message, bytes) and len(message) > 0:
-                    frame = Frame(
-                        data=message,
-                        pts_ms=time.monotonic() * 1000,
-                        width=0,
-                        height=0,
-                        format=self._codec,
-                    )
-                    if self._frame_queue.full():
-                        try:
-                            self._frame_queue.get_nowait()
-                        except asyncio.QueueEmpty:
-                            pass
-                    self._frame_queue.put_nowait(frame)
-                    log.info("TeleopBackend: frame %d bytes, queue=%d", len(message), self._frame_queue.qsize())
+                # Forward raw H.265 NAL units to GStreamer pipeline
+                # TODO: push to GStreamer appsrc
+                pass
 
             def on_error(ws, error):
                 if self._running:

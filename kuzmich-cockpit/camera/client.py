@@ -1,51 +1,20 @@
-"""kuzmich_camera — клиент видеосервера Кузьмич.
+"""kuzmich_camera — Python client for camera server.
 
-Использование:
+For YOLO and other local consumers that need raw BGR frames.
+
+Usage:
     from camera.client import CameraClient
-
-    # Простой захват JPEG-кадров
     cam = CameraClient()
-    jpeg = cam.snapshot()           # bytes
-    cam.save_snapshot("frame.jpg")
-
-    # Потоковая подписка (H.264 NAL units)
-    for nal_data in cam.stream_nal():
-        decode_h264(nal_data)
-
-    # Потоковая подписка (MJPEG)
-    for jpeg_frame in cam.stream_mjpeg():
-        process(jpeg_frame)
-
-    # Поток сырых BGR-кадров (для YOLO)
+    jpeg = cam.snapshot()
     for color, meta in cam.stream_raw_bgr():
         model(color)
-
-    # С depth
-    for color, depth, meta in cam.stream_raw_bgr(depth=True):
-        distance = depth[y, x] * 0.001
-
-    # Async версия
-    async for jpeg_frame in cam.astream_mjpeg():
-        await process(jpeg_frame)
 """
 from __future__ import annotations
 
 import json
-import time
-from pathlib import Path
-from typing import Any, Dict, Iterator, Optional, Tuple, Union
+from typing import Any, Dict, Iterator, Optional, Tuple
 
 import httpx
-
-try:
-    import websockets.sync.client as wsc_sync
-except ImportError:
-    wsc_sync = None
-
-try:
-    import websockets
-except ImportError:
-    websockets = None
 
 
 class CameraClient:
@@ -68,103 +37,101 @@ class CameraClient:
 
     def save_snapshot(self, path: str) -> bool:
         """Save a JPEG frame to file."""
+        from pathlib import Path
         data = self.snapshot()
         if data:
             Path(path).write_bytes(data)
             return True
         return False
 
-    def stream_nal(self) -> Iterator[bytes]:
-        """Iterator of H.264 NAL units from WebSocket."""
-        if wsc_sync is None:
-            raise ImportError("websockets package required")
-        with wsc_sync.connect(
-            f"ws://127.0.0.1:8080/api/camera/ws/stream?codec=h264"
-        ) as ws:
-            while True:
-                msg = ws.recv()
-                if isinstance(msg, bytes):
-                    yield msg
-
     def stream_raw_bgr(self, depth: bool = False) -> Iterator[Tuple]:
-        """Stream raw BGR frames (for YOLO). Returns (color_ndarray, metadata)
-        or (color_ndarray, depth_ndarray, metadata) if depth=True.
-        If depth is requested but unavailable, returns color-only with depth_available=False in meta."""
-        import numpy as np
+        """Stream raw BGR frames via WebSocket.
 
-        if wsc_sync is None:
-            raise ImportError("websockets package required")
+        Returns (color_ndarray, metadata) or (color_ndarray, depth_ndarray, metadata).
+        If depth is requested but unavailable, returns color-only with depth_available=False.
+        """
+        import numpy as np
+        import websocket
 
         url = f"ws://127.0.0.1:8080/api/camera/ws/raw{'?depth=true' if depth else ''}"
-        with wsc_sync.connect(url) as ws:
-            meta = json.loads(ws.recv())
-            w, h = meta["width"], meta["height"]
-            depth_avail = meta.get("depth_available", True)
+        result = [None, None]
+
+        def on_message(ws, msg):
+            result[0] = msg
+
+        ws = websocket.WebSocketApp(url, on_message=on_message)
+        # Use raw socket approach for iterator
+        import socket as _sock
+        import base64, os as _os
+
+        host, port = "127.0.0.1", 8080
+        path = f"/api/camera/ws/raw{'?depth=true' if depth else ''}"
+        s = _sock.socket(_sock.AF_INET, _sock.SOCK_STREAM)
+        s.settimeout(30)
+        s.connect((host, port))
+        key = base64.b64encode(_os.urandom(16)).decode()
+        req = (
+            f"GET {path} HTTP/1.1\r\n"
+            f"Host: {host}:{port}\r\n"
+            "Upgrade: websocket\r\n"
+            "Connection: Upgrade\r\n"
+            f"Sec-WebSocket-Key: {key}\r\n"
+            "Sec-WebSocket-Version: 13\r\n\r\n"
+        )
+        s.send(req.encode())
+        resp = s.recv(4096)
+        if b"101" not in resp:
+            s.close()
+            raise ConnectionError(f"WebSocket upgrade failed: {resp[:200]}")
+        try:
             while True:
-                data = ws.recv()
-                if isinstance(data, bytes):
-                    color_size = w * h * 3
-                    color = np.frombuffer(data[:color_size], dtype=np.uint8).reshape(h, w, 3)
-                    if depth and depth_avail and "depth_width" in meta:
-                        dw, dh = meta["depth_width"], meta["depth_height"]
-                        depth_data = np.frombuffer(
-                            data[color_size:], dtype=np.uint16
-                        ).reshape(dh, dw)
-                        yield color, depth_data, meta
-                    else:
-                        yield color, meta
-
-    async def asnapshot(self) -> Optional[bytes]:
-        """Async version of snapshot."""
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                f"{self._base}/api/camera/snapshot.jpg", timeout=5.0
-            )
-            if resp.status_code == 200:
-                return resp.content
-        return None
-
-    async def astream_mjpeg(self):
-        """Async MJPEG stream."""
-        async with httpx.AsyncClient() as client:
-            async with client.stream(
-                "GET", f"{self._base}/api/camera/stream.mjpg"
-            ) as resp:
-                async for chunk in resp.aiter_bytes():
-                    yield chunk
-
-    async def astream_nal(self):
-        """Async H.264 NAL stream."""
-        if websockets is None:
-            raise ImportError("websockets package required")
-        async with websockets.connect(
-            f"ws://127.0.0.1:8080/api/camera/ws/stream?codec=h264"
-        ) as ws:
-            async for msg in ws:
-                if isinstance(msg, bytes):
-                    yield msg
-
-    async def astream_raw_bgr(self, depth: bool = False):
-        """Async raw BGR stream (for YOLO). depth=True adds depth stream."""
-        import numpy as np
-
-        if websockets is None:
-            raise ImportError("websockets package required")
-
-        url = f"ws://127.0.0.1:8080/api/camera/ws/raw{'?depth=true' if depth else ''}"
-        async with websockets.connect(url) as ws:
-            meta = json.loads(await ws.recv())
-            w, h = meta["width"], meta["height"]
-            depth_avail = meta.get("depth_available", True)
-            async for msg in ws:
-                if isinstance(msg, bytes):
-                    color_size = w * h * 3
-                    color = np.frombuffer(msg[:color_size], dtype=np.uint8).reshape(h, w, 3)
-                    if depth and depth_avail and "depth_width" in meta:
-                        dw, dh = meta["depth_width"], meta["depth_height"]
-                        depth_data = np.frombuffer(
-                            msg[color_size:], dtype=np.uint16
-                        ).reshape(dh, dw)
-                        yield color, depth_data, meta
-                    else:
-                        yield color, meta
+                data = s.recv(65536)
+                if not data:
+                    break
+                offset = 0
+                while offset < len(data):
+                    if offset + 2 > len(data):
+                        break
+                    byte1 = data[offset]
+                    byte2 = data[offset + 1]
+                    opcode = byte1 & 0x0F
+                    payload_len = byte2 & 0x7F
+                    offset += 2
+                    if payload_len == 126:
+                        payload_len = int.from_bytes(data[offset:offset+2], "big")
+                        offset += 2
+                    elif payload_len == 127:
+                        payload_len = int.from_bytes(data[offset:offset+8], "big")
+                        offset += 8
+                    masked = bool(byte2 & 0x80)
+                    if masked:
+                        mask = data[offset:offset+4]
+                        offset += 4
+                    payload = data[offset:offset+payload_len]
+                    offset += payload_len
+                    if masked:
+                        payload = bytes(b ^ mask[i % 4] for i, b in enumerate(payload))
+                    if opcode == 0x1:  # text frame (JSON metadata)
+                        try:
+                            meta = json.loads(payload.decode())
+                            if "width" in meta:
+                                w, h = meta["width"], meta["height"]
+                                depth_avail = meta.get("depth_available", False)
+                        except Exception:
+                            pass
+                    elif opcode == 0x2:  # binary frame (BGR data)
+                        if 'w' in dir():
+                            color_size = w * h * 3
+                            color = np.frombuffer(payload[:color_size], dtype=np.uint8).reshape(h, w, 3)
+                            if depth and depth_avail and "depth_width" in meta:
+                                dw, dh = meta["depth_width"], meta["depth_height"]
+                                depth_data = np.frombuffer(
+                                    payload[color_size:], dtype=np.uint16
+                                ).reshape(dh, dw)
+                                yield color, depth_data, meta
+                            else:
+                                yield color, meta
+                    elif opcode == 0x8:  # close
+                        return
+        finally:
+            s.close()
