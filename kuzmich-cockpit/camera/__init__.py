@@ -1,13 +1,15 @@
-"""Camera module — FastAPI router + initialization."""
+"""Camera module — FastAPI router + initialization.
+
+WebSocket endpoints (raw BGR, depth) are served by GStreamer natively
+via `websocketserver` elements on ports 8082/8083. Python only handles
+REST API and WebRTC signaling.
+"""
 from __future__ import annotations
 
-import json
 import logging
 from typing import Any, Dict, Optional
-from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException, Query, Response, WebSocket
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, HTTPException, Response
 
 from .config import CameraConfig
 from .manager import CameraManager
@@ -35,7 +37,7 @@ def get_camera_manager() -> Optional[CameraManager]:
 @router.get("/status")
 async def camera_status():
     if _camera_manager is None:
-        return {"state": "stopped", "backend": None, "clients": 0}
+        return {"state": "stopped", "backend": None}
     return _camera_manager.status()
 
 
@@ -59,7 +61,7 @@ async def camera_stop():
 async def camera_snapshot():
     if _camera_manager is None:
         return Response(status_code=503, content=b"camera module not initialized")
-    frame = await _camera_manager.snapshot_jpeg() if _camera_manager.active_backend_type else None
+    frame = await _camera_manager.snapshot_jpeg()
     if frame:
         return Response(
             content=frame,
@@ -90,13 +92,8 @@ async def webrtc_offer(data: Dict[str, Any]):
     return {"error": "WebRTC not yet implemented", "hint": "Use /stream.mjpg fallback"}
 
 
-# --- WebSocket raw BGR (for YOLO) ---
-
-
-@router.websocket("/ws/raw")
-async def ws_raw(ws: WebSocket, depth: bool = Query(False)):
-    """WebSocket raw BGR frames — served by GStreamer appsink."""
-    # TODO: proxy from GStreamer appsink
-    await ws.accept()
-    await ws.send_json({"error": "Raw BGR via GStreamer not yet implemented"})
-    await ws.close()
+# NOTE: Raw BGR and depth WebSocket endpoints are served by GStreamer
+# directly via `websocketserver` elements:
+# - Port 8082: ws://host:8082 — raw BGR frames (for YOLO)
+# - Port 8083: ws://host:8083 — raw depth Z16 (for YOLO+3D, LOCAL only)
+# No Python proxy needed — GStreamer handles all delivery natively.

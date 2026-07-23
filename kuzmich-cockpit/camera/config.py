@@ -50,6 +50,10 @@ class CameraConfig:
     # --- WebRTC ---
     webrtc_stun_url: str = _env("CAM_WEBRTC_STUN", "stun:stun.l.google.com:19302")
 
+    # --- GStreamer WebSocket endpoints (сервятся GStreamer напрямую) ---
+    ws_raw_bgr_port: int = _env_int("CAM_WS_RAW_PORT", 8082)    # Raw BGR для YOLO
+    ws_depth_port: int = _env_int("CAM_WS_DEPTH_PORT", 8083)    # Raw depth Z16 для YOLO+3D
+
     # --- Teleop integration ---
     teleop_api_url: str = _env("TELEOP_API_URL", "http://192.168.1.102")
     teleop_ws_url: str = _env("TELEOP_WS_URL", "ws://192.168.1.102/ws/camera/preview")

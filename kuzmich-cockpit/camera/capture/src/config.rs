@@ -1,7 +1,7 @@
 use serde::Deserialize;
-use std::path::Path;
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct CameraConfig {
     pub color: StreamConfig,
     pub depth: DepthConfig,
@@ -22,6 +22,7 @@ pub struct StreamConfig {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct DepthConfig {
     pub enabled: bool,
     #[serde(default)]
@@ -53,6 +54,7 @@ pub struct WebRtcConfig {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct TeleopConfig {
     #[serde(default = "default_teleop_api")]
     pub api_url: String,
