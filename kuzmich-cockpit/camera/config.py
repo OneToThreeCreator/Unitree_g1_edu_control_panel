@@ -40,20 +40,21 @@ class CameraConfig:
     max_depth_m: float = _env_float("CAM_MAX_DEPTH_M", 4.00)
     disable_ir_emitter: bool = _env_bool("CAM_DISABLE_IR", False)
 
-    # --- ffmpeg encoding (encoder name определяет codec) ---
-    # h264_v4l2m2m → H.264 (V4L2 M2M, hardware on Jetson Orin NX)
-    # h264_omx → H.264 (OpenMAX, hardware, fallback)
-    # libx264 → H.264 (software, universal fallback)
-    # h264_nvmpi → H.264 (NVIDIA MPI, если собран с --enable-nvmpi)
-    ffmpeg_encoder: str = _env("CAM_FFMPEG_ENCODER", "libx264")
-    ffmpeg_bitrate: int = _env_int("CAM_FFMPEG_BITRATE", 2000)  # kbps
-    ffmpeg_preset: str = _env("CAM_FFMPEG_PRESET", "ultrafast")
+    # --- GStreamer encoding (encoder name определяет codec) ---
+    # nvv4l2h265enc → H.265 (V4L2 M2M, hardware, default)
+    # nvv4l2h264enc → H.264 (V4L2 M2M, hardware, fallback)
+    # libx265/libx264 → software fallback
+    gst_encoder: str = _env("CAM_GST_ENCODER", "nvv4l2h265enc")
+    gst_bitrate: int = _env_int("CAM_GST_BITRATE", 4000)  # kbps
+
+    # --- WebRTC ---
+    webrtc_stun_url: str = _env("CAM_WEBRTC_STUN", "stun:stun.l.google.com:19302")
 
     # --- Teleop integration ---
     teleop_api_url: str = _env("TELEOP_API_URL", "http://192.168.1.102")
     teleop_ws_url: str = _env("TELEOP_WS_URL", "ws://192.168.1.102/ws/camera/preview")
     teleop_poll_interval_s: float = _env_float("TELEOP_POLL_INTERVAL", 2.0)
-    teleop_codec: str = _env("TELEOP_CODEC", "h264")
+    teleop_codec: str = _env("TELEOP_CODEC", "h265")
 
     # --- Legacy MJPEG proxy ---
     video_mjpeg_url: str = _env("VIDEO_MJPEG_URL", "http://127.0.0.1:8091")

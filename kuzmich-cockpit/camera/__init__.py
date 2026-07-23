@@ -1,8 +1,9 @@
 """Camera module — FastAPI router + initialization."""
 from __future__ import annotations
 
+import json
 import logging
-from typing import Optional
+from typing import Any, Dict, Optional
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Query, Response, WebSocket
@@ -11,7 +12,6 @@ from fastapi.responses import StreamingResponse
 from .config import CameraConfig
 from .manager import CameraManager, CameraState
 from .streaming.mjpeg import MjpegStreamer
-from .streaming.ws_nal import WsNalStreamer
 from .streaming.ws_raw import WsRawStreamer
 
 log = logging.getLogger("cockpit.camera")
@@ -19,14 +19,12 @@ log = logging.getLogger("cockpit.camera")
 router = APIRouter(prefix="/api/camera", tags=["camera"])
 
 _camera_manager: Optional[CameraManager] = None
-_ws_nal: Optional[WsNalStreamer] = None
 _ws_raw: Optional[WsRawStreamer] = None
 
 
 def init_camera(config: CameraConfig, teleop_bridge: object = None) -> None:
-    global _camera_manager, _ws_nal, _ws_raw
+    global _camera_manager, _ws_raw
     _camera_manager = CameraManager(config, teleop_bridge=teleop_bridge)
-    _ws_nal = WsNalStreamer(_camera_manager)
     _ws_raw = WsRawStreamer(_camera_manager)
     log.info("Camera module initialized")
 
@@ -101,16 +99,20 @@ async def camera_stream_mjpeg():
     )
 
 
-# --- WebSocket endpoints ---
+# --- WebRTC signaling ---
 
 
-@router.websocket("/ws/stream")
-async def ws_stream(ws: WebSocket, codec: str = "h264"):
-    """WebSocket raw NAL delivery (primary streaming protocol)."""
-    if _ws_nal is None:
-        await ws.close(code=1013, reason="Camera not initialized")
-        return
-    await _ws_nal.handle(ws, codec)
+@router.post("/webrtc/offer")
+async def webrtc_offer(data: Dict[str, Any]):
+    """WebRTC SDP offer/answer exchange."""
+    if _camera_manager is None:
+        raise HTTPException(503, "Camera module not initialized")
+    # TODO: implement GStreamer webrtcbin signaling
+    # For now, return a placeholder
+    return {"error": "WebRTC not yet implemented", "hint": "Use /stream.mjpg fallback"}
+
+
+# --- WebSocket raw BGR ---
 
 
 @router.websocket("/ws/raw")

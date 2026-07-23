@@ -6,7 +6,6 @@
 <title>Кузьмич · Единый пульт</title>
 <link rel="stylesheet" href="css/base.css">
 <link rel="stylesheet" href="css/index.css">
-<script src="js/jmuxer.min.js"></script>
 </head>
 <body>
 <header>
@@ -374,8 +373,7 @@ $("#aiText").addEventListener("keydown",e=>{if(e.key==="Enter")askAI();});
 function addMsg(who,text){ const d=document.createElement("div"); d.className="msg "+who; d.textContent=text; $("#chat").appendChild(d); $("#chat").scrollTop=1e9; }
 
 // -------- Видео --------
-let camActive = false, camWs = null, camJmuxer = null;
-let camServerActive = false;
+let camActive = false, camPeer = null, camServerActive = false;
 
 function updateCamStatus(status) {
   const el = $("#camStatus");
@@ -408,8 +406,7 @@ function updateCamToggleState() {
 }
 
 function disconnectVideo() {
-  if (camWs) { try { camWs.close(); } catch(e){} camWs = null; }
-  if (camJmuxer) { try { camJmuxer.destroy(); } catch(e){} camJmuxer = null; }
+  if (camPeer) { try { camPeer.close(); } catch(e){} camPeer = null; }
   const v = $("#feedVideo"), img = $("#feed"), ph = $("#feedph");
   if (v) { v.style.display = "none"; v.srcObject = null; }
   if (img) img.style.display = "none";
@@ -420,60 +417,55 @@ async function connectVideo() {
   disconnectVideo();
   updateCamStatus("connecting");
   try {
-    const proto = location.protocol === "https:" ? "wss" : "ws";
-    const url = `${proto}://${location.host}/api/camera/ws/stream?codec=h264&r=${Date.now()}`;
-    camWs = new WebSocket(url);
-    camWs.binaryType = "arraybuffer";
-    camWs.onopen = () => {
-      const v = $("#feedVideo");
-      v.style.display = "";
-      $("#feedph").style.display = "none";
-    };
-    camWs.onmessage = (e) => {
-      if (typeof e.data === "string") {
-        try {
-          const meta = JSON.parse(e.data);
-          console.log("[CAM] codec:", meta.codec, meta.width + "x" + meta.height);
-          // Check H.265 MSE support
-          if (meta.codec === "h265") {
-            const h265supported = MediaSource.isTypeSupported('video/mp4; codecs="hev1.1.6.L120.B0"');
-            console.log("[CAM] H.265 MSE supported:", h265supported);
-          }
-        } catch(_) {}
-        return;
-      }
-      if (!window.JMuxer) { console.warn("[CAM] JMuxer not loaded"); return; }
-      if (!camJmuxer) {
-        console.log("[CAM] Creating JMuxer instance");
-        camJmuxer = new JMuxer({
-          node: "feedVideo",
-          mode: "video",
-          flushingTime: 100,
-          fps: 30,
-        });
-      }
-      const raw = new Uint8Array(e.data);
-      // Strip Annex B start codes (00 00 00 01 or 00 00 01) for JMuxer
-      let buf = raw;
-      if (raw[0] === 0 && raw[1] === 0 && raw[2] === 0 && raw[3] === 1) {
-        buf = raw.slice(4);
-      } else if (raw[0] === 0 && raw[1] === 0 && raw[2] === 1) {
-        buf = raw.slice(3);
-      }
-      console.log("[CAM] NAL:", buf.length, "bytes, first:", buf[0].toString(16));
-      camJmuxer.feed({ video: buf });
-      const v = $("#feedVideo");
-      if (v.videoWidth > 0) console.log("[CAM] DECODED:", v.videoWidth + "x" + v.videoHeight);
-      updateCamStatus("live");
-    };
-    camWs.onerror = () => updateCamStatus("error");
-    camWs.onclose = () => { if (camActive) updateCamStatus("error"); };
+    // Try WebRTC first
+    await connectWebRTC();
   } catch(e) {
-    const img = $("#feed");
-    img.onload = () => { img.style.display = ""; $("#feedph").style.display = "none"; updateCamStatus("live"); };
-    img.onerror = () => updateCamStatus("error");
-    img.src = "/api/camera/stream.mjpg?t=" + Date.now();
+    console.warn("[CAM] WebRTC failed, falling back to MJPEG:", e);
+    connectMjpeg();
   }
+}
+
+async function connectWebRTC() {
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  const stunUrl = "stun:stun.l.google.com:19302";
+
+  const pc = new RTCPeerConnection({ iceServers: [{ urls: stunUrl }] });
+  camPeer = pc;
+
+  pc.ontrack = (event) => {
+    const v = $("#feedVideo");
+    v.srcObject = event.streams[0];
+    v.style.display = "";
+    $("#feedph").style.display = "none";
+    v.play().then(() => updateCamStatus("live")).catch(() => {});
+  };
+
+  pc.oniceconnectionstatechange = () => {
+    if (pc.iceConnectionState === "failed" || pc.iceConnectionState === "disconnected") {
+      updateCamStatus("error");
+    }
+  };
+
+  pc.addTransceiver("video", { direction: "recvonly" });
+
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+
+  const resp = await fetch("/api/camera/webrtc/offer", {
+    method: "PUT",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ sdp: pc.localDescription.sdp, type: pc.localDescription.type })
+  });
+  const answer = await resp.json();
+  if (answer.error) throw new Error(answer.error);
+  await pc.setRemoteDescription(new RTCSessionDescription(answer));
+}
+
+function connectMjpeg() {
+  const img = $("#feed");
+  img.onload = () => { img.style.display = ""; $("#feedph").style.display = "none"; updateCamStatus("live"); };
+  img.onerror = () => updateCamStatus("error");
+  img.src = "/api/camera/stream.mjpg?t=" + Date.now();
 }
 
 // Camera Share Server toggle — controls backend server
