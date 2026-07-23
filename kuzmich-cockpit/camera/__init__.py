@@ -71,12 +71,10 @@ async def camera_snapshot():
     return Response(status_code=503, content=b"no frame available")
 
 
-# NOTE: MJPEG, raw BGR, and depth are served by GStreamer natively
-# via websocketserver elements. Frontend connects directly:
-# - ws://host:8082 — raw BGR (YOLO)
-# - ws://host:8083 — depth Z16 (YOLO+3D)
-# - ws://host:8084 — MJPEG (fallback for browsers without WebRTC)
-# No Python proxy needed.
+# NOTE: WebSocket endpoints for MJPEG, raw BGR, depth are proxied through FastAPI
+# (port 8080) because browser CSP blocks cross-origin WebSocket connections.
+# GStreamer websocketsink runs on separate ports (8082, 8083, 8084).
+# Python proxies WebSocket data from GStreamer to clients on port 8080.
 
 
 # --- WebRTC signaling ---
@@ -88,11 +86,62 @@ async def webrtc_offer(data: Dict[str, Any]):
     if _camera_manager is None:
         raise HTTPException(503, "Camera module not initialized")
     # TODO: implement GStreamer webrtcbin signaling
-    return {"error": "WebRTC not yet implemented", "hint": "Use /stream.mjpg fallback"}
+    return {"error": "WebRTC not yet implemented", "hint": "Use MJPEG fallback"}
 
 
-# NOTE: Raw BGR and depth WebSocket endpoints are served by GStreamer
-# directly via `websocketserver` elements:
-# - Port 8082: ws://host:8082 — raw BGR frames (for YOLO)
-# - Port 8083: ws://host:8083 — raw depth Z16 (for YOLO+3D, LOCAL only)
-# No Python proxy needed — GStreamer handles all delivery natively.
+# --- WebSocket proxies (port 8080) ---
+# Browser CSP blocks cross-origin WebSocket to GStreamer ports (8082-8084).
+# Python proxies WebSocket data from GStreamer websocketsink to browser clients.
+
+@router.websocket("/ws/mjpeg")
+async def ws_mjpeg_proxy(ws: WebSocket):
+    """Proxy MJPEG from GStreamer websocketsink:8084 to browser."""
+    await ws.accept()
+    try:
+        import websockets
+        async with websockets.connect(f"ws://127.0.0.1:{_camera_manager.config.ws_raw_bgr_port + 2}") as gst_ws:
+            async for msg in gst_ws:
+                if isinstance(msg, bytes):
+                    await ws.send_bytes(msg)
+    except Exception as e:
+        log.warning("MJPEG proxy error: %s", e)
+        try:
+            await ws.close()
+        except Exception:
+            pass
+
+
+@router.websocket("/ws/raw")
+async def ws_raw_proxy(ws: WebSocket):
+    """Proxy raw BGR from GStreamer websocketsink:8082 to browser."""
+    await ws.accept()
+    try:
+        import websockets
+        async with websockets.connect(f"ws://127.0.0.1:{_camera_manager.config.ws_raw_bgr_port}") as gst_ws:
+            async for msg in gst_ws:
+                if isinstance(msg, bytes):
+                    await ws.send_bytes(msg)
+    except Exception as e:
+        log.warning("Raw BGR proxy error: %s", e)
+        try:
+            await ws.close()
+        except Exception:
+            pass
+
+
+@router.websocket("/ws/depth")
+async def ws_depth_proxy(ws: WebSocket):
+    """Proxy depth Z16 from GStreamer websocketsink:8083 to browser."""
+    await ws.accept()
+    try:
+        import websockets
+        async with websockets.connect(f"ws://127.0.0.1:{_camera_manager.config.ws_depth_port}") as gst_ws:
+            async for msg in gst_ws:
+                if isinstance(msg, bytes):
+                    await ws.send_bytes(msg)
+    except Exception as e:
+        log.warning("Depth proxy error: %s", e)
+        try:
+            await ws.close()
+        except Exception:
+            pass
