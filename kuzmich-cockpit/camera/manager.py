@@ -143,11 +143,15 @@ class CameraManager:
 
         while True:
             try:
-                teleop_active = await self._teleop.is_preview_active()
+                # Use is_running() (checks /api/services) — more reliable than
+                # is_preview_active() which may not reflect actual service state
+                teleop_active = await self._teleop.is_running()
 
                 if teleop_active and self._state == CameraState.LOCAL:
+                    log.info("Teleop detected as running, switching to RELAY")
                     await self._switch_to_relay()
                 elif not teleop_active and self._state == CameraState.RELAY:
+                    log.info("Teleop detected as stopped, switching to LOCAL")
                     await self._switch_to_local()
 
             except Exception as e:
