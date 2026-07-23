@@ -5,6 +5,7 @@ import asyncio
 import logging
 import subprocess
 import signal
+import threading
 from enum import Enum
 from typing import Any, Dict, Optional
 
@@ -152,6 +153,19 @@ class CameraManager:
                 preexec_fn=lambda: signal.signal(signal.SIGINT, signal.SIG_IGN),
             )
             log.info("GStreamer started (pid=%s)", self._gst_process.pid)
+
+            # Log GStreamer stderr in background thread
+            def _log_gst_stderr():
+                for line in self._gst_process.stderr:
+                    log.warning("GStreamer: %s", line.decode(errors="replace").strip())
+            threading.Thread(target=_log_gst_stderr, daemon=True).start()
+
+            # Check if process started successfully
+            import time
+            time.sleep(0.5)
+            if self._gst_process.poll() is not None:
+                log.error("GStreamer exited immediately with code %s", self._gst_process.returncode)
+
         except FileNotFoundError:
             log.error("gst-launch-1.0 not found. Is GStreamer installed?")
         except Exception as e:
