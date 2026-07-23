@@ -53,7 +53,7 @@ class CameraConfig:
     teleop_api_url: str = _env("TELEOP_API_URL", "http://192.168.1.102")
     teleop_ws_url: str = _env("TELEOP_WS_URL", "ws://192.168.1.102/ws/camera/preview")
     teleop_poll_interval_s: float = _env_float("TELEOP_POLL_INTERVAL", 2.0)
-    teleop_codec: str = _env("TELEOP_CODEC", "h265")
+    teleop_codec: str = _env("TELEOP_CODEC", "h264")
 
     # --- Legacy MJPEG proxy ---
     video_mjpeg_url: str = _env("VIDEO_MJPEG_URL", "http://127.0.0.1:8091")
