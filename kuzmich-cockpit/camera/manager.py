@@ -7,6 +7,7 @@ from enum import Enum
 from typing import Any, Dict, Optional
 
 from .config import CameraConfig
+from .teleop import TeleopBackend
 
 log = logging.getLogger("cockpit.camera.manager")
 
