@@ -122,11 +122,12 @@ class CameraManager:
         ws_bin = os.path.join(os.path.dirname(os.path.dirname(__file__)), "gstwebsocketsink-bin")
         gst_env["GST_PLUGIN_PATH"] = ws_bin
 
-        # Color pipeline — simplified: appsrc → encode → tee → websocketsinks
+        # Color pipeline — appsrc → nvvidconv → encode → tee → websocketsinks
         color_pipeline = (
             f"appsrc name=src is-live=true format=time "
             f"! video/x-raw,format=BGR,width={w},height={h},framerate={fps}/1 "
-            f"! videoconvert "
+            f"! videoconvert ! nvvidconv "
+            f"! video/x-raw(memory:NVMM),format=NV12 "
             f"! {encoder} bitrate={bitrate} ! h265parse "
             f"! tee name=t "
             f"t. ! queue ! jpegenc "
