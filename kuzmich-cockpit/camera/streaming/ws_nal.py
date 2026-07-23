@@ -23,12 +23,18 @@ class WsNalStreamer:
         queue = self._camera.subscribe(client_id)
         try:
             await ws.accept()
+
+            # Wait for first frame to detect actual codec
+            frame = await queue.get()
+            actual_codec = frame.format if frame.format in ("h264", "h265", "av1") else codec
+
             # Send codec info as first JSON message
             await ws.send_json({
-                "codec": codec,
-                "width": self._camera.config.color_width,
-                "height": self._camera.config.color_height,
+                "codec": actual_codec,
+                "width": frame.width or self._camera.config.color_width,
+                "height": frame.height or self._camera.config.color_height,
             })
+            await ws.send_bytes(frame.data)
 
             while True:
                 frame = await queue.get()

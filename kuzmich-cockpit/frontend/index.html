@@ -430,9 +430,21 @@ async function connectVideo() {
       $("#feedph").style.display = "none";
     };
     camWs.onmessage = (e) => {
-      if (typeof e.data === "string") return;
-      if (!window.JMuxer) return;
+      if (typeof e.data === "string") {
+        try {
+          const meta = JSON.parse(e.data);
+          console.log("[CAM] codec:", meta.codec, meta.width + "x" + meta.height);
+          // Check H.265 MSE support
+          if (meta.codec === "h265") {
+            const h265supported = MediaSource.isTypeSupported('video/mp4; codecs="hev1.1.6.L120.B0"');
+            console.log("[CAM] H.265 MSE supported:", h265supported);
+          }
+        } catch(_) {}
+        return;
+      }
+      if (!window.JMuxer) { console.warn("[CAM] JMuxer not loaded"); return; }
       if (!camJmuxer) {
+        console.log("[CAM] Creating JMuxer instance");
         camJmuxer = new JMuxer({
           node: "feedVideo",
           mode: "video",
@@ -440,7 +452,18 @@ async function connectVideo() {
           fps: 30,
         });
       }
-      camJmuxer.feed({ video: new Uint8Array(e.data) });
+      const raw = new Uint8Array(e.data);
+      // Strip Annex B start codes (00 00 00 01 or 00 00 01) for JMuxer
+      let buf = raw;
+      if (raw[0] === 0 && raw[1] === 0 && raw[2] === 0 && raw[3] === 1) {
+        buf = raw.slice(4);
+      } else if (raw[0] === 0 && raw[1] === 0 && raw[2] === 1) {
+        buf = raw.slice(3);
+      }
+      console.log("[CAM] NAL:", buf.length, "bytes, first:", buf[0].toString(16));
+      camJmuxer.feed({ video: buf });
+      const v = $("#feedVideo");
+      if (v.videoWidth > 0) console.log("[CAM] DECODED:", v.videoWidth + "x" + v.videoHeight);
       updateCamStatus("live");
     };
     camWs.onerror = () => updateCamStatus("error");
