@@ -1,0 +1,61 @@
+# Camera configuration — единый источник правды для Python + Rust
+# Env vars перекрывают значения: CAM_GST_ENCODER=... → encoder.name
+
+[color]
+width = 1280
+height = 720
+fps = 30
+
+[depth]
+enabled = true
+width = 640
+height = 480
+fps = 30
+
+# GStreamer encoder name — определяет codec
+[encoder]
+name = "nvv4l2h265enc"  # H.265 default. Fallback: nvv4l2h264enc, libx265
+bitrate = 4000           # kbps
+
+# Fallback chain — пробует по порядку при старте
+[[fallbacks]]
+label = "USB 3.x full"
+[color]
+width = 1280
+height = 720
+fps = 30
+[depth]
+enabled = true
+width = 640
+height = 480
+fps = 30
+
+[[fallbacks]]
+label = "USB 2.0 reduced"
+[color]
+width = 640
+height = 480
+fps = 15
+[depth]
+enabled = true
+width = 640
+height = 480
+fps = 15
+
+[[fallbacks]]
+label = "USB 2.0 minimal"
+[color]
+width = 320
+height = 240
+fps = 15
+[depth]
+enabled = false
+
+[webrtc]
+stun_url = "stun:stun.l.google.com:19302"
+
+[teleop]
+api_url = "http://192.168.1.102"
+ws_url = "ws://192.168.1.102/ws/camera/preview"
+codec = "h265"
+poll_interval = 2.0

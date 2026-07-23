@@ -1,0 +1,25 @@
+[package]
+name = "camera-capture"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+gstreamer = "0.22"
+gstreamer-app = "0.22"
+gstreamer-video = "0.22"
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+log = "0.4"
+env_logger = "0.11"
+
+# RealSense — через system librealsense2
+# На Jetson: sudo apt install librealsense2-dev
+# FFI bindings генерируются через bindgen
+[build-dependencies]
+bindgen = "0.69"
+
+[features]
+default = ["realsense"]
+realsense = []
+depth = ["realsense"]
