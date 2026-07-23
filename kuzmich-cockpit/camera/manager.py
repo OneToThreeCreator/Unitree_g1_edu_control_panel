@@ -118,6 +118,7 @@ class CameraManager:
         stun = self._config.webrtc_stun_url
 
         # Color pipeline
+        # Color pipeline — simplified: appsrc → encode → tee → websocketsinks
         color_pipeline = (
             f"appsrc name=src is-live=true format=time "
             f"! video/x-raw,format=BGR,width={w},height={h},framerate={fps}/1 "
@@ -125,7 +126,6 @@ class CameraManager:
             f"! video/x-raw(memory:NVMM),format=NV12 "
             f"! {encoder} bitrate={bitrate} ! h265parse "
             f"! tee name=t "
-            f"t. ! queue ! webrtcbin stun-server={stun} "
             f"t. ! queue ! jpegenc "
             f"! websocketsink host=0.0.0.0 port={self._config.ws_raw_bgr_port + 2} "
             f"t. ! queue ! videoconvert "
@@ -226,11 +226,10 @@ class CameraManager:
         codec = self._config.teleop_codec
         stun = self._config.webrtc_stun_url
 
-        # Pipeline: receive H.265 from Teleop WebSocket → tee → WebRTC / MJPEG / raw BGR
+        # Pipeline: receive H.265 from Teleop WebSocket → tee → MJPEG / raw BGR
         pipeline = (
             f"websocketclientsrc uri={ws_url}?codec={codec} "
             f"! h265parse ! tee name=t "
-            f"t. ! queue ! webrtcbin stun-server={stun} "
             f"t. ! queue ! jpegenc "
             f"! websocketsink host=0.0.0.0 port={self._config.ws_raw_bgr_port + 2} "
             f"t. ! queue ! videoconvert "
