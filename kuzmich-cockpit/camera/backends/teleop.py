@@ -57,11 +57,14 @@ class TeleopBackend(VideoBackend):
 
     async def _connect_loop(self) -> None:
         """Reconnect loop — keeps WebSocket alive."""
+        delay = 1.0
+        max_delay = 10.0
         while self._running:
             try:
                 url = f"{self._config.teleop_ws_url}?codec={self._codec}"
-                async with websockets.connect(url) as ws:
+                async with websockets.connect(url, open_timeout=5.0) as ws:
                     self._ws_connection = ws
+                    delay = 1.0  # Reset delay on successful connection
                     log.info("TeleopBackend connected to %s", url)
 
                     async for message in ws:
@@ -71,7 +74,7 @@ class TeleopBackend(VideoBackend):
                             frame = Frame(
                                 data=message,
                                 pts_ms=time.monotonic() * 1000,
-                                width=0,  # Unknown until SPS parsed
+                                width=0,
                                 height=0,
                                 format=self._codec,
                             )
@@ -84,5 +87,7 @@ class TeleopBackend(VideoBackend):
 
             except Exception as e:
                 if self._running:
-                    log.warning("TeleopBackend connection error: %s", e)
-                    await asyncio.sleep(2.0)
+                    log.warning("TeleopBackend: failed to connect to %s — %s (%s)",
+                                url, e, type(e).__name__)
+                    await asyncio.sleep(delay)
+                    delay = min(delay * 2, max_delay)
