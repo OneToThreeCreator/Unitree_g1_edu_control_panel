@@ -127,7 +127,8 @@ class CameraManager:
             f"t. ! queue ! webrtcbin stun-server={stun} "
             f"t. ! queue ! jpegenc "
             f"! websocketsink host=0.0.0.0 port={self._config.ws_raw_bgr_port + 2} "
-            f"t. ! queue ! videoconvert video/x-raw,format=BGR "
+            f"t. ! queue ! videoconvert "
+            f"! video/x-raw,format=BGR "
             f"! websocketsink host=0.0.0.0 port={self._config.ws_raw_bgr_port}"
         )
 
@@ -142,7 +143,8 @@ class CameraManager:
             )
             pipeline += f" {depth_pipeline}"
 
-        cmd = ["gst-launch-1.0", "-e"] + pipeline.split()
+        # Use -c flag to pass pipeline as string (avoids .split() issues)
+        cmd = ["gst-launch-1.0", "-e", "-c", pipeline]
         log.info("Starting GStreamer: %s", " ".join(cmd[:10]) + "...")
 
         try:
@@ -226,11 +228,13 @@ class CameraManager:
             f"t. ! queue ! webrtcbin stun-server={stun} "
             f"t. ! queue ! jpegenc "
             f"! websocketsink host=0.0.0.0 port={self._config.ws_raw_bgr_port + 2} "
-            f"t. ! queue ! videoconvert video/x-raw,format=BGR "
+            f"t. ! queue ! videoconvert "
+            f"! video/x-raw,format=BGR "
             f"! websocketsink host=0.0.0.0 port={self._config.ws_raw_bgr_port}"
         )
 
-        cmd = ["gst-launch-1.0", "-e"] + pipeline.split()
+        # Use -c flag to pass pipeline as string
+        cmd = ["gst-launch-1.0", "-e", "-c", pipeline]
         log.info("Starting GStreamer RELAY: %s", " ".join(cmd[:10]) + "...")
 
         try:
