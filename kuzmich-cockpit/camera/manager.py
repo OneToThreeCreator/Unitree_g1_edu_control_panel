@@ -115,15 +115,18 @@ class CameraManager:
         encoder = self._config.gst_encoder
         bitrate = self._config.gst_bitrate
         w, h, fps = self._config.color_width, self._config.color_height, self._config.color_fps
-        stun = self._config.webrtc_stun_url
 
-        # Color pipeline
+        # GStreamer env — add websocketsink plugin path
+        import os
+        gst_env = os.environ.copy()
+        ws_bin = os.path.join(os.path.dirname(os.path.dirname(__file__)), "gstwebsocketsink-bin")
+        gst_env["GST_PLUGIN_PATH"] = ws_bin
+
         # Color pipeline — simplified: appsrc → encode → tee → websocketsinks
         color_pipeline = (
             f"appsrc name=src is-live=true format=time "
             f"! video/x-raw,format=BGR,width={w},height={h},framerate={fps}/1 "
-            f"! videoconvert ! nvvideoconvert "
-            f"! video/x-raw(memory:NVMM),format=NV12 "
+            f"! videoconvert "
             f"! {encoder} bitrate={bitrate} ! h265parse "
             f"! tee name=t "
             f"t. ! queue ! jpegenc "
@@ -139,7 +142,7 @@ class CameraManager:
 
         try:
             self._gst_process = subprocess.Popen(
-                cmd_color, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                cmd_color, env=gst_env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
                 preexec_fn=lambda: signal.signal(signal.SIGINT, signal.SIG_IGN),
             )
             self._log_gst_stderr(self._gst_process)
@@ -163,7 +166,7 @@ class CameraManager:
             cmd_depth = ["gst-launch-1.0", "-e"] + depth_pipeline.split(" ")
             try:
                 self._gst_depth_process = subprocess.Popen(
-                    cmd_depth, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                    cmd_depth, env=gst_env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
                     preexec_fn=lambda: signal.signal(signal.SIGINT, signal.SIG_IGN),
                 )
                 self._log_gst_stderr(self._gst_depth_process)
@@ -223,6 +226,11 @@ class CameraManager:
         if self._gst_process and self._gst_process.poll() is None:
             self._stop_gstreamer()
 
+        import os
+        gst_env = os.environ.copy()
+        ws_bin = os.path.join(os.path.dirname(os.path.dirname(__file__)), "gstwebsocketsink-bin")
+        gst_env["GST_PLUGIN_PATH"] = ws_bin
+
         ws_url = self._config.teleop_ws_url
         codec = self._config.teleop_codec
         stun = self._config.webrtc_stun_url
@@ -245,6 +253,7 @@ class CameraManager:
         try:
             self._gst_process = subprocess.Popen(
                 cmd,
+                env=gst_env,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.PIPE,
                 preexec_fn=lambda: signal.signal(signal.SIGINT, signal.SIG_IGN),
