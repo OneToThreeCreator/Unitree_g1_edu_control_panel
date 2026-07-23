@@ -125,10 +125,10 @@ class CameraManager:
             f"! {encoder} bitrate={bitrate} ! h265parse "
             f"! tee name=t "
             f"t. ! queue ! webrtcbin stun-server={stun} "
-            f"t. ! queue ! jpegenc ! multipartmux boundary=frame "
-            f"! websocketserver host=0.0.0.0 port=8084 "
+            f"t. ! queue ! jpegenc "
+            f"! websocketsink host=0.0.0.0 port={self._config.ws_raw_bgr_port + 2} "
             f"t. ! queue ! videoconvert video/x-raw,format=BGR "
-            f"! websocketserver host=0.0.0.0 port=8082"
+            f"! websocketsink host=0.0.0.0 port={self._config.ws_raw_bgr_port}"
         )
 
         # Add depth pipeline if enabled
@@ -138,7 +138,7 @@ class CameraManager:
                 f"appsrc name=depth_src is-live=true format=time "
                 f"video/x-raw,format=GRAY16_LE,width={dw},height={dh},framerate={dfps}/1 "
                 f"! videoconvert "
-                f"! websocketserver host=0.0.0.0 port={self._config.ws_depth_port}"
+                f"! websocketsink host=0.0.0.0 port={self._config.ws_depth_port}"
             )
             pipeline += f" {depth_pipeline}"
 
@@ -224,10 +224,10 @@ class CameraManager:
             f"websocketclientsrc uri={ws_url}?codec={codec} "
             f"! h265parse ! tee name=t "
             f"t. ! queue ! webrtcbin stun-server={stun} "
-            f"t. ! queue ! jpegenc ! multipartmux boundary=frame "
-            f"! websocketserver host=0.0.0.0 port={self._config.ws_raw_bgr_port + 2} "
+            f"t. ! queue ! jpegenc "
+            f"! websocketsink host=0.0.0.0 port={self._config.ws_raw_bgr_port + 2} "
             f"t. ! queue ! videoconvert video/x-raw,format=BGR "
-            f"! websocketserver host=0.0.0.0 port={self._config.ws_raw_bgr_port}"
+            f"! websocketsink host=0.0.0.0 port={self._config.ws_raw_bgr_port}"
         )
 
         cmd = ["gst-launch-1.0", "-e"] + pipeline.split()

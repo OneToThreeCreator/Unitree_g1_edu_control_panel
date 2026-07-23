@@ -24,8 +24,8 @@ pub async fn run_pipeline(
     // --- Color pipeline ---
     // appsrc → videoconvert → nvvideoconvert → encoder → tee
     //   ├── webrtcbin → WebRTC (browser)
-    //   ├── jpegenc → multipartmux → websocketserver:8084 (MJPEG fallback)
-    //   └── videoconvert → websocketserver:8082 (raw BGR for YOLO)
+    //   ├── jpegenc → websocketsink:8084 (MJPEG fallback)
+    //   └── videoconvert → websocketsink:8082 (raw BGR for YOLO)
     let color_pipeline = format!(
         "appsrc name=src is-live=true format=time \
          video/x-raw,format=BGR,width={},height={},framerate={}/1 \
@@ -36,23 +36,23 @@ pub async fn run_pipeline(
          ! h265parse \
          ! tee name=t \
          t. ! queue ! webrtcbin stun-server={} \
-         t. ! queue ! jpegenc ! multipartmux boundary=frame \
-         ! websocketserver host=0.0.0.0 port=8084 \
+         t. ! queue ! jpegenc \
+         ! websocketsink host=0.0.0.0 port=8084 \
          t. ! queue ! videoconvert ! video/x-raw,format=BGR \
-         ! websocketserver host=0.0.0.0 port=8082",
+         ! websocketsink host=0.0.0.0 port=8082",
         capture.width, capture.height, capture.fps,
         cfg.encoder.name, cfg.encoder.bitrate,
         cfg.webrtc.stun_url,
     );
 
     // --- Depth pipeline (LOCAL mode only) ---
-    // appsrc → websocketserver:8083 (raw GRAY16_LE for YOLO+3D)
+    // appsrc → websocketsink:8083 (raw GRAY16_LE for YOLO+3D)
     let depth_pipeline = if capture.has_depth {
         format!(
             "appsrc name=depth_src is-live=true format=time \
              video/x-raw,format=GRAY16_LE,width={},height={},framerate={}/1 \
              ! videoconvert \
-             ! websocketserver host=0.0.0.0 port=8083",
+             ! websocketsink host=0.0.0.0 port=8083",
             capture.depth_width, capture.depth_height, capture.fps,
         )
     } else {

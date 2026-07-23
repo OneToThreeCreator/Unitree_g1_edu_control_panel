@@ -1,0 +1,3 @@
+[submodule "kuzmich-cockpit/gstwebsocketsink"]
+	path = kuzmich-cockpit/gstwebsocketsink
+	url = https://github.com/StanKarpikov/gstwebsocketsink.git
