@@ -122,18 +122,18 @@ class CameraManager:
         ws_bin = os.path.join(os.path.dirname(os.path.dirname(__file__)), "gstwebsocketsink-bin")
         gst_env["GST_PLUGIN_PATH"] = ws_bin
 
-        # Color pipeline — appsrc → nvvidconv → encode → tee → websocketsinks
+        # Color pipeline:
+        # appsrc → tee (raw BGR)
+        #   ├── queue → nvvidconv → encoder → websocketsink:8084 (H.265 NAL for WebRTC)
+        #   └── queue → jpegenc → websocketsink:8082 (MJPEG from raw BGR)
         color_pipeline = (
             f"appsrc name=src is-live=true format=time "
             f"! video/x-raw,format=BGR,width={w},height={h},framerate={fps}/1 "
-            f"! nvvidconv "
-            f"! video/x-raw(memory:NVMM),format=NV12 "
-            f"! {encoder} bitrate={bitrate} ! h265parse "
             f"! tee name=t "
-            f"t. ! queue ! jpegenc "
+            f"t. ! queue ! nvvidconv "
+            f"! {encoder} bitrate={bitrate} ! h265parse "
             f"! websocketsink host=0.0.0.0 port={self._config.ws_raw_bgr_port + 2} "
-            f"t. ! queue ! videoconvert "
-            f"! video/x-raw,format=BGR "
+            f"t. ! queue ! jpegenc quality=80 "
             f"! websocketsink host=0.0.0.0 port={self._config.ws_raw_bgr_port}"
         )
 
