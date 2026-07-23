@@ -13,6 +13,7 @@ from typing import Any, Dict, Set
 import os
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -33,6 +34,12 @@ log = logging.getLogger("cockpit")
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 
 app = FastAPI(title="Kuzmich Cockpit")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 app.include_router(camera_router)
 app.include_router(file_router)
 
