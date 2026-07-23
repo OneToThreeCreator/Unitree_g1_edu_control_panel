@@ -9,6 +9,6 @@ pyserial==3.5
 python-multipart==0.0.20
 
 # Camera module
-websockets>=10.0
-av>=10.0            # PyAV — Python bindings для libavcodec (h264_nvmpi)
+websocket-client>=1.0   # Teleop WebSocket (accepts HTTP/1.0 from RobotAdmin)
+av>=10.0                # PyAV — Python bindings для libavcodec (h264_v4l2m2m)
 numpy>=1.20
