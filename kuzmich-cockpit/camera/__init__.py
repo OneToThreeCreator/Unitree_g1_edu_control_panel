@@ -74,24 +74,44 @@ async def camera_snapshot():
 
 @router.get("/stream.mjpg")
 async def camera_stream_mjpeg():
-    """MJPEG fallback — proxies from GStreamer websocketserver:8084."""
+    """MJPEG fallback — tries GStreamer websocketserver:8084, falls back to legacy:8091."""
     if _camera_manager is None:
         return Response(status_code=503, content=b"camera module not initialized")
     import httpx
     from typing import AsyncIterator
 
-    mjpeg_ws_port = 8084  # GStreamer websocketserver MJPEG port
+    # Try GStreamer first, fallback to legacy
+    sources = [
+        ("http://127.0.0.1:8084/stream.mjpg", "GStreamer"),
+        (_camera_manager.config.video_mjpeg_url + "/stream.mjpg", "legacy"),
+    ]
 
-    async def gen() -> AsyncIterator[bytes]:
+    async def try_proxy(url: str, label: str) -> Optional[StreamingResponse]:
         try:
-            async with httpx.AsyncClient(timeout=None) as client:
-                async with client.stream("GET", f"http://127.0.0.1:{mjpeg_ws_port}/stream.mjpg") as resp:
-                    async for chunk in resp.aiter_bytes():
-                        yield chunk
-        except Exception as e:
-            log.warning("MJPEG proxy error: %s", e)
+            async with httpx.AsyncClient(timeout=3.0) as client:
+                async with client.stream("GET", url) as resp:
+                    if resp.status_code != 200:
+                        return None
+                    # Got a connection — stream it
+                    async def gen() -> AsyncIterator[bytes]:
+                        try:
+                            async with httpx.AsyncClient(timeout=None) as c:
+                                async with c.stream("GET", url) as r:
+                                    async for chunk in r.aiter_bytes():
+                                        yield chunk
+                        except Exception as e:
+                            log.warning("MJPEG %s error: %s", label, e)
+                    return StreamingResponse(gen(), media_type="multipart/x-mixed-replace; boundary=frame")
+        except Exception:
+            return None
 
-    return StreamingResponse(gen(), media_type="multipart/x-mixed-replace; boundary=frame")
+    for url, label in sources:
+        result = await try_proxy(url, label)
+        if result:
+            log.info("MJPEG proxy connected to %s", label)
+            return result
+
+    return Response(status_code=503, content=b"No MJPEG source available (GStreamer not running, legacy not found)")
 
 
 # --- WebRTC signaling ---
