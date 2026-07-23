@@ -45,9 +45,9 @@ class CameraConfig:
     # h264_omx → H.264 (OpenMAX, hardware, fallback)
     # libx264 → H.264 (software, universal fallback)
     # h264_nvmpi → H.264 (NVIDIA MPI, если собран с --enable-nvmpi)
-    ffmpeg_encoder: str = _env("CAM_FFMPEG_ENCODER", "h264_v4l2m2m")
-    ffmpeg_bitrate: int = _env_int("CAM_FFMPEG_BITRATE", 4000)  # kbps
-    ffmpeg_preset: str = _env("CAM_FFMPEG_PRESET", "medium")
+    ffmpeg_encoder: str = _env("CAM_FFMPEG_ENCODER", "libx264")
+    ffmpeg_bitrate: int = _env_int("CAM_FFMPEG_BITRATE", 2000)  # kbps
+    ffmpeg_preset: str = _env("CAM_FFMPEG_PRESET", "ultrafast")
 
     # --- Teleop integration ---
     teleop_api_url: str = _env("TELEOP_API_URL", "http://192.168.1.102")
