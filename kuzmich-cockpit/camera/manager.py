@@ -114,7 +114,7 @@ class CameraManager:
         # Build GStreamer pipeline command
         encoder = self._config.gst_encoder
         bitrate = self._config.gst_bitrate
-        w, h, fps = self._config.color_width, self._config.color_height, self._config.fps
+        w, h, fps = self._config.color_width, self._config.color_height, self._config.color_fps
         stun = self._config.webrtc_stun_url
 
         pipeline = (

@@ -63,15 +63,13 @@ else
 fi
 
 # RealSense
-if pkg-config --exists librealsense2 2>/dev/null; then
+if pkg-config --exists librealsense2 2>/dev/null || [ -f "/usr/include/librealsense2/rs.h" ] || [ -f "/usr/local/include/librealsense2/rs.h" ]; then
     echo "librealsense2: OK"
 else
-    echo "librealsense2 not found. Install manually:"
-    echo "  sudo apt install -y libusb-1.0-0 libusb-1.0-0-dev"
-    echo "  cd /tmp && git clone https://github.com/IntelRealSense/librealsense.git"
-    echo "  cd librealsense && mkdir build && cd build"
-    echo "  cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_EXAMPLES=false"
-    echo "  make -j\$(nproc) && sudo make install && sudo ldconfig"
+    echo "librealsense2 not found. Install from official Intel repo:"
+    echo "  sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-key F6E65AC044F831AC80A06380C8B3A55A6F3EFCDE"
+    echo "  sudo add-apt-repository \"deb http://realsense-hw-public.s3-us-west-2.amazonaws.com/Ubuntu/apt-repo focal main\""
+    echo "  sudo apt update && sudo apt install -y librealsense2-dev"
     exit 1
 fi
 
