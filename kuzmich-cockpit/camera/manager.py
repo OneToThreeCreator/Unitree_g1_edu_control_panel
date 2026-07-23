@@ -123,14 +123,20 @@ class CameraManager:
         gst_env["GST_PLUGIN_PATH"] = ws_bin
 
         # Color pipeline:
-        # appsrc → tee (raw BGR)
-        #   ├── queue → nvvidconv → encoder → websocketsink:8084 (H.265 NAL for WebRTC)
-        #   └── queue → jpegenc → websocketsink:8082 (MJPEG from raw BGR)
+        # appsrc (BGR) → videoconvert → tee
+        #   ├── queue → nvvidconv → encoder → websocketsink:8084 (H.265)
+        #   └── queue → jpegenc → websocketsink:8082 (MJPEG)
+        #
+        # nvvidconv requires BGRx/RGBA/NV12 input, not BGR.
+        # tee is BEFORE nvvidconv — one branch encodes, other makes JPEG.
+        # The encoder branch uses nvvidconv for HW encoding.
+        # The jpegenc branch uses software videoconvert from BGR.
         color_pipeline = (
             f"appsrc name=src is-live=true format=time "
             f"! video/x-raw,format=BGR,width={w},height={h},framerate={fps}/1 "
             f"! tee name=t "
-            f"t. ! queue ! nvvidconv "
+            f"t. ! queue ! videoconvert ! video/x-raw,format=BGRx "
+            f"! nvvidconv "
             f"! {encoder} bitrate={bitrate} ! h265parse "
             f"! websocketsink host=0.0.0.0 port={self._config.ws_raw_bgr_port + 2} "
             f"t. ! queue ! jpegenc quality=80 "
