@@ -164,6 +164,8 @@ class CameraManager:
             if self._local_backend and self._local_backend.is_active:
                 await self._local_backend.stop()
                 self._local_backend = None
+                # Wait for RealSense device to fully release
+                await asyncio.sleep(1.0)
 
             # Start Teleop relay
             self._teleop_backend = TeleopBackend(self._config)
@@ -182,6 +184,8 @@ class CameraManager:
             if self._teleop_backend and self._teleop_backend.is_active:
                 await self._teleop_backend.stop()
                 self._teleop_backend = None
+                # Wait for RealSense device to fully release (if Teleop held it)
+                await asyncio.sleep(1.0)
 
             # Start local capture
             self._local_backend = LocalBackend(self._config)
