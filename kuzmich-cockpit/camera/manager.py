@@ -126,7 +126,7 @@ class CameraManager:
         color_pipeline = (
             f"appsrc name=src is-live=true format=time "
             f"! video/x-raw,format=BGR,width={w},height={h},framerate={fps}/1 "
-            f"! videoconvert ! nvvidconv "
+            f"! nvvidconv "
             f"! video/x-raw(memory:NVMM),format=NV12 "
             f"! {encoder} bitrate={bitrate} ! h265parse "
             f"! tee name=t "
