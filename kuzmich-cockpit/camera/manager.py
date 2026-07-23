@@ -36,6 +36,7 @@ class CameraManager:
         self._state = CameraState.STOPPED
         self._poll_task: Optional[asyncio.Task] = None
         self._gst_process: Optional[subprocess.Popen] = None
+        self._gst_depth_process: Optional[subprocess.Popen] = None
 
     @property
     def state(self) -> CameraState:
@@ -106,18 +107,18 @@ class CameraManager:
         return None
 
     def _start_gstreamer(self) -> None:
-        """Launch GStreamer pipeline."""
+        """Launch GStreamer pipeline (color + optional depth as separate processes)."""
         if self._gst_process and self._gst_process.poll() is None:
             log.info("GStreamer already running (pid=%s)", self._gst_process.pid)
             return
 
-        # Build GStreamer pipeline command
         encoder = self._config.gst_encoder
         bitrate = self._config.gst_bitrate
         w, h, fps = self._config.color_width, self._config.color_height, self._config.color_fps
         stun = self._config.webrtc_stun_url
 
-        pipeline = (
+        # Color pipeline
+        color_pipeline = (
             f"appsrc name=src is-live=true format=time "
             f"video/x-raw,format=BGR,width={w},height={h},framerate={fps}/1 "
             f"! videoconvert ! nvvideoconvert "
@@ -132,7 +133,24 @@ class CameraManager:
             f"! websocketsink host=0.0.0.0 port={self._config.ws_raw_bgr_port}"
         )
 
-        # Add depth pipeline if enabled
+        cmd_color = ["gst-launch-1.0", "-e", "-c", color_pipeline]
+        log.info("Starting GStreamer color: %s...", " ".join(cmd_color[:6]))
+
+        try:
+            self._gst_process = subprocess.Popen(
+                cmd_color, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                preexec_fn=lambda: signal.signal(signal.SIGINT, signal.SIG_IGN),
+            )
+            self._log_gst_stderr(self._gst_process)
+            log.info("GStreamer color started (pid=%s)", self._gst_process.pid)
+        except FileNotFoundError:
+            log.error("gst-launch-1.0 not found")
+            return
+        except Exception as e:
+            log.error("Failed to start GStreamer: %s", e)
+            return
+
+        # Depth pipeline (separate process)
         if self._config.depth_enabled:
             dw, dh, dfps = self._config.depth_width, self._config.depth_height, self._config.depth_fps
             depth_pipeline = (
@@ -141,56 +159,43 @@ class CameraManager:
                 f"! videoconvert "
                 f"! websocketsink host=0.0.0.0 port={self._config.ws_depth_port}"
             )
-            pipeline += f" {depth_pipeline}"
+            cmd_depth = ["gst-launch-1.0", "-e", "-c", depth_pipeline]
+            try:
+                self._gst_depth_process = subprocess.Popen(
+                    cmd_depth, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                    preexec_fn=lambda: signal.signal(signal.SIGINT, signal.SIG_IGN),
+                )
+                self._log_gst_stderr(self._gst_depth_process)
+                log.info("GStreamer depth started (pid=%s)", self._gst_depth_process.pid)
+            except Exception as e:
+                log.warning("Failed to start depth pipeline: %s", e)
 
-        # Use -c flag to pass pipeline as string (avoids .split() issues)
-        cmd = ["gst-launch-1.0", "-e", "-c", pipeline]
-        log.info("Starting GStreamer: %s", " ".join(cmd[:10]) + "...")
-
-        try:
-            self._gst_process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.PIPE,
-                preexec_fn=lambda: signal.signal(signal.SIGINT, signal.SIG_IGN),
-            )
-            log.info("GStreamer started (pid=%s)", self._gst_process.pid)
-
-            # Log GStreamer stderr in background thread
-            def _log_gst_stderr():
-                for line in self._gst_process.stderr:
-                    log.warning("GStreamer: %s", line.decode(errors="replace").strip())
-            threading.Thread(target=_log_gst_stderr, daemon=True).start()
-
-            # Check if process started successfully
-            import time
-            time.sleep(0.5)
-            if self._gst_process.poll() is not None:
-                log.error("GStreamer exited immediately with code %s", self._gst_process.returncode)
-
-        except FileNotFoundError:
-            log.error("gst-launch-1.0 not found. Is GStreamer installed?")
-        except Exception as e:
-            log.error("Failed to start GStreamer: %s", e)
+    def _log_gst_stderr(self, proc: subprocess.Popen) -> None:
+        """Log GStreamer stderr in background thread."""
+        def _reader():
+            for line in proc.stderr:
+                log.warning("GStreamer: %s", line.decode(errors="replace").strip())
+        threading.Thread(target=_reader, daemon=True).start()
 
     def _stop_gstreamer(self) -> None:
-        """Stop GStreamer pipeline."""
-        if self._gst_process is None:
-            return
-        if self._gst_process.poll() is not None:
-            self._gst_process = None
-            return
-        try:
-            pid = self._gst_process.pid
-            self._gst_process.send_signal(signal.SIGINT)  # gst-launch handles SIGINT for clean shutdown
-            self._gst_process.wait(timeout=5)
-            log.info("GStreamer stopped (pid=%s)", pid)
-        except subprocess.TimeoutExpired:
-            self._gst_process.kill()
-            log.warning("GStreamer killed (pid=%s)", self._gst_process.pid)
-        except Exception as e:
-            log.warning("Error stopping GStreamer: %s", e)
+        """Stop all GStreamer pipelines."""
+        for proc in [self._gst_process, self._gst_depth_process]:
+            if proc is None:
+                continue
+            if proc.poll() is not None:
+                continue
+            try:
+                pid = proc.pid
+                proc.send_signal(signal.SIGINT)
+                proc.wait(timeout=5)
+                log.info("GStreamer stopped (pid=%s)", pid)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                log.warning("GStreamer killed (pid=%s)", proc.pid)
+            except Exception as e:
+                log.warning("Error stopping GStreamer: %s", e)
         self._gst_process = None
+        self._gst_depth_process = None
 
     async def _teleop_poll_loop(self) -> None:
         if not self._teleop:
