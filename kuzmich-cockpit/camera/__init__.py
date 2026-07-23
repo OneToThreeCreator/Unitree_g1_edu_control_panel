@@ -10,6 +10,7 @@ import logging
 from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, HTTPException, Response
+from fastapi.responses import StreamingResponse
 
 from .config import CameraConfig
 from .manager import CameraManager
