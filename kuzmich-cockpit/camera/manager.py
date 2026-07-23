@@ -186,11 +186,48 @@ class CameraManager:
                     log.info("Teleop detected → RELAY mode")
                     self._state = CameraState.RELAY
                     self._stop_gstreamer()
-                    # TODO: Start Teleop relay GStreamer pipeline
+                    self._start_gstreamer_relay()
                 elif not teleop_active and self._state == CameraState.RELAY:
                     log.info("Teleop stopped → LOCAL mode")
                     self._state = CameraState.LOCAL
+                    self._stop_gstreamer()
                     self._start_gstreamer()
             except Exception as e:
                 log.debug("Teleop poll error: %s", e)
             await asyncio.sleep(self._config.teleop.poll_interval)
+
+    def _start_gstreamer_relay(self) -> None:
+        """Launch GStreamer pipeline for RELAY mode (receives H.265 from Teleop WebSocket)."""
+        if self._gst_process and self._gst_process.poll() is None:
+            self._stop_gstreamer()
+
+        ws_url = self._config.teleop_ws_url
+        codec = self._config.teleop_codec
+        stun = self._config.webrtc_stun_url
+
+        # Pipeline: receive H.265 from Teleop WebSocket → tee → WebRTC / MJPEG / raw BGR
+        pipeline = (
+            f"websocketclientsrc uri={ws_url}?codec={codec} "
+            f"! h265parse ! tee name=t "
+            f"t. ! queue ! webrtcbin stun-server={stun} "
+            f"t. ! queue ! jpegenc ! multipartmux boundary=frame "
+            f"! websocketserver host=0.0.0.0 port={self._config.ws_raw_bgr_port + 2} "
+            f"t. ! queue ! videoconvert video/x-raw,format=BGR "
+            f"! websocketserver host=0.0.0.0 port={self._config.ws_raw_bgr_port}"
+        )
+
+        cmd = ["gst-launch-1.0", "-e"] + pipeline.split()
+        log.info("Starting GStreamer RELAY: %s", " ".join(cmd[:10]) + "...")
+
+        try:
+            self._gst_process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                preexec_fn=lambda: signal.signal(signal.SIGINT, signal.SIG_IGN),
+            )
+            log.info("GStreamer RELAY started (pid=%s)", self._gst_process.pid)
+        except FileNotFoundError:
+            log.error("gst-launch-1.0 not found")
+        except Exception as e:
+            log.error("Failed to start GStreamer RELAY: %s", e)
