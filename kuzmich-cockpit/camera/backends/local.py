@@ -45,20 +45,20 @@ class LocalBackend(VideoBackend):
         self._pipeline = rs.pipeline()
         rs_config = rs.config()
 
-        # Build fallback chain: full → no-depth → lower-res
-        attempts = []
+        # Fallback chain: high-res → low-res + depth → low-res no depth
+        attempts = [
+            (
+                f"{self._config.color_width}x{self._config.color_height}@{self._config.color_fps} (no depth)",
+                self._config.color_width, self._config.color_height, self._config.color_fps,
+                0, 0, 0,
+            ),
+        ]
         if self._config.depth_enabled:
             attempts.append((
-                f"{self._config.color_width}x{self._config.color_height}@{self._config.color_fps} "
-                f"+ depth {self._config.depth_width}x{self._config.depth_height}@{self._config.depth_fps}",
-                self._config.color_width, self._config.color_height, self._config.color_fps,
-                self._config.depth_width, self._config.depth_height, self._config.depth_fps,
+                f"640x480@15 + depth 640x480@15",
+                640, 480, 15,
+                640, 480, 15,
             ))
-        attempts.append((
-            f"{self._config.color_width}x{self._config.color_height}@{self._config.color_fps} (no depth)",
-            self._config.color_width, self._config.color_height, self._config.color_fps,
-            0, 0, 0,
-        ))
         attempts.append((
             f"640x480@15 (no depth)",
             640, 480, 15,
