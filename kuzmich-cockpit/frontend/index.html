@@ -468,10 +468,39 @@ async function connectWebRTC() {
 }
 
 function connectMjpeg() {
+  // Connect directly to GStreamer websocketserver:8084 (MJPEG frames)
+  const ws = new WebSocket(`ws://${location.hostname}:8084`);
+  ws.binaryType = "arraybuffer";
   const img = $("#feed");
-  img.onload = () => { img.style.display = ""; $("#feedph").style.display = "none"; updateCamStatus("live"); };
-  img.onerror = () => updateCamStatus("error");
-  img.src = "/api/camera/stream.mjpg?t=" + Date.now();
+
+  let buf = "";
+  ws.onmessage = (e) => {
+    // GStreamer multipartmux sends JPEG frames as binary
+    const bytes = new Uint8Array(e.data);
+    // Find JPEG markers: FF D8 (SOI) ... FF D9 (EOI)
+    for (let i = 0; i < bytes.length - 1; i++) {
+      if (bytes[i] === 0xFF && bytes[i + 1] === 0xD8) {
+        // Found JPEG start — collect until EOI
+        let end = -1;
+        for (let j = i + 2; j < bytes.length - 1; j++) {
+          if (bytes[j] === 0xFF && bytes[j + 1] === 0xD9) {
+            end = j + 2;
+            break;
+          }
+        }
+        if (end > 0) {
+          const jpeg = bytes.slice(i, end);
+          const blob = new Blob([jpeg], { type: "image/jpeg" });
+          img.src = URL.createObjectURL(blob);
+          img.style.display = "";
+          $("#feedph").style.display = "none";
+          updateCamStatus("live");
+        }
+      }
+    }
+  };
+  ws.onerror = () => updateCamStatus("error");
+  ws.onclose = () => { if (camActive) updateCamStatus("error"); };
 }
 
 // Camera Share Server toggle — controls backend server

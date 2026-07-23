@@ -10,7 +10,6 @@ import logging
 from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, HTTPException, Response
-from fastapi.responses import StreamingResponse
 
 from .config import CameraConfig
 from .manager import CameraManager
@@ -72,46 +71,12 @@ async def camera_snapshot():
     return Response(status_code=503, content=b"no frame available")
 
 
-@router.get("/stream.mjpg")
-async def camera_stream_mjpeg():
-    """MJPEG fallback — tries GStreamer websocketserver:8084, falls back to legacy:8091."""
-    if _camera_manager is None:
-        return Response(status_code=503, content=b"camera module not initialized")
-    import httpx
-    from typing import AsyncIterator
-
-    # Try GStreamer first, fallback to legacy
-    sources = [
-        ("http://127.0.0.1:8084/stream.mjpg", "GStreamer"),
-        (_camera_manager.config.video_mjpeg_url + "/stream.mjpg", "legacy"),
-    ]
-
-    async def try_proxy(url: str, label: str) -> Optional[StreamingResponse]:
-        try:
-            async with httpx.AsyncClient(timeout=3.0) as client:
-                async with client.stream("GET", url) as resp:
-                    if resp.status_code != 200:
-                        return None
-                    # Got a connection — stream it
-                    async def gen() -> AsyncIterator[bytes]:
-                        try:
-                            async with httpx.AsyncClient(timeout=None) as c:
-                                async with c.stream("GET", url) as r:
-                                    async for chunk in r.aiter_bytes():
-                                        yield chunk
-                        except Exception as e:
-                            log.warning("MJPEG %s error: %s", label, e)
-                    return StreamingResponse(gen(), media_type="multipart/x-mixed-replace; boundary=frame")
-        except Exception:
-            return None
-
-    for url, label in sources:
-        result = await try_proxy(url, label)
-        if result:
-            log.info("MJPEG proxy connected to %s", label)
-            return result
-
-    return Response(status_code=503, content=b"No MJPEG source available (GStreamer not running, legacy not found)")
+# NOTE: MJPEG, raw BGR, and depth are served by GStreamer natively
+# via websocketserver elements. Frontend connects directly:
+# - ws://host:8082 — raw BGR (YOLO)
+# - ws://host:8083 — depth Z16 (YOLO+3D)
+# - ws://host:8084 — MJPEG (fallback for browsers without WebRTC)
+# No Python proxy needed.
 
 
 # --- WebRTC signaling ---
