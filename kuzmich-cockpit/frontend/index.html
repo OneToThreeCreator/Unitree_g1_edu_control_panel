@@ -468,8 +468,9 @@ async function connectWebRTC() {
 }
 
 function connectMjpeg() {
-  // Connect directly to GStreamer websocketserver:8084 (MJPEG frames)
-  const ws = new WebSocket(`ws://${location.hostname}:8084`);
+  // Connect via FastAPI proxy (port 8080) to avoid CSP cross-origin issues
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  const ws = new WebSocket(`${proto}://${location.host}/api/camera/ws/mjpeg`);
   ws.binaryType = "arraybuffer";
   const img = $("#feed");
 
