@@ -133,8 +133,9 @@ class CameraManager:
             f"! websocketsink host=0.0.0.0 port={self._config.ws_raw_bgr_port}"
         )
 
-        cmd_color = ["gst-launch-1.0", "-e", color_pipeline]
-        log.info("Starting GStreamer color: %s...", " ".join(cmd_color[:6]))
+        # Split pipeline into argv (caps filters have no spaces, so split is safe)
+        cmd_color = ["gst-launch-1.0", "-e"] + color_pipeline.split(" ")
+        log.info("Starting GStreamer color: %s...", " ".join(cmd_color[:8]) + "...")
 
         try:
             self._gst_process = subprocess.Popen(
@@ -159,7 +160,7 @@ class CameraManager:
                 f"! videoconvert "
                 f"! websocketsink host=0.0.0.0 port={self._config.ws_depth_port}"
             )
-            cmd_depth = ["gst-launch-1.0", "-e", depth_pipeline]
+            cmd_depth = ["gst-launch-1.0", "-e"] + depth_pipeline.split(" ")
             try:
                 self._gst_depth_process = subprocess.Popen(
                     cmd_depth, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
@@ -237,9 +238,9 @@ class CameraManager:
             f"! websocketsink host=0.0.0.0 port={self._config.ws_raw_bgr_port}"
         )
 
-        # Pass pipeline as regular argument (NOT -c flag)
-        cmd = ["gst-launch-1.0", "-e", pipeline]
-        log.info("Starting GStreamer RELAY: %s", " ".join(cmd[:10]) + "...")
+        # Split pipeline into argv
+        cmd = ["gst-launch-1.0", "-e"] + pipeline.split(" ")
+        log.info("Starting GStreamer RELAY: %s...", " ".join(cmd[:8]) + "...")
 
         try:
             self._gst_process = subprocess.Popen(
