@@ -217,11 +217,9 @@ class CameraManager:
         ws_bin = os.path.join(os.path.dirname(os.path.dirname(__file__)), "gstwebsocketsink-bin")
         gst_env["GST_PLUGIN_PATH"] = ws_bin
 
-        # DRY_RUN pipeline: videotestsrc → tee → MJPEG / raw BGR / RTP H.265+H.264
-        # Software encoding only — no nvvidconv (not available on dev machines)
-        # leaky=downstream on RTP queues prevents blocked encoder from stalling the pipeline
-        rtp_port = self._config.janus_rtp_h265_port
-        rtp_h264_port = self._config.janus_rtp_h264_port
+        # DRY_RUN pipeline: videotestsrc → tee → MJPEG / raw BGR
+        # No RTP in DRY_RUN — software x265/x264 from Python subprocess causes issues.
+        # RTP branches are in LOCAL and RELAY pipelines (Jetson with hardware encoders).
         color_pipeline = (
             f"videotestsrc is-live=true ! "
             f"videoconvert ! video/x-raw,format=BGR,width={w},height={h},framerate={fps}/1 ! "
@@ -229,23 +227,17 @@ class CameraManager:
             f"t. ! queue ! jpegenc quality=80 "
             f"! websocketsink host=0.0.0.0 port={self._config.ws_raw_bgr_port} "
             f"t. ! queue ! videoconvert ! video/x-raw,format=BGR "
-            f"! websocketsink host=0.0.0.0 port={self._config.ws_raw_bgr_port + 2} "
-            f"t. ! queue ! videoconvert ! video/x-raw,format=I420 "
-            f"! x265enc key-int-max=30 speed-preset=ultrafast ! h265parse ! rtph265pay config-interval=1 "
-            f"! udpsink host=127.0.0.1 port={rtp_port} "
-            f"t. ! queue ! videoconvert ! video/x-raw,format=I420 "
-            f"! x264enc tune=zerolatency speed-preset=ultrafast ! h264parse ! rtph264pay config-interval=1 "
-            f"! udpsink host=127.0.0.1 port={rtp_h264_port}"
+            f"! websocketsink host=0.0.0.0 port={self._config.ws_raw_bgr_port + 2}"
         )
 
-        cmd_str = f"gst-launch-1.0 -e {color_pipeline}"
-        log.info("Starting GStreamer DRY_RUN: %s", cmd_str)
+        cmd_color = ["gst-launch-1.0", "-e"] + color_pipeline.split(" ")
+        log.info("Starting GStreamer DRY_RUN: %s...", " ".join(cmd_color[:8]) + "...")
         log.info("MJPEG will be on ws://0.0.0.0:%s", self._config.ws_raw_bgr_port)
 
         try:
             self._gst_process = subprocess.Popen(
-                cmd_str, shell=True, env=gst_env,
-                stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                cmd_color, env=gst_env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                preexec_fn=lambda: signal.signal(signal.SIGINT, signal.SIG_IGN),
             )
             self._log_gst_stderr(self._gst_process)
             log.info("GStreamer DRY_RUN started (pid=%s)", self._gst_process.pid)
