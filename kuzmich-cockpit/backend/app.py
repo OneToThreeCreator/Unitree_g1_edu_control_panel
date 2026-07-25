@@ -25,6 +25,7 @@ from .bridges.companion import COMPANION
 from .bridges.movement import MovementBridge
 from .bridges.head import HeadBridge
 from .bridges.teleop import TELEOP
+from .bridges.battery import BatteryBridge
 from camera import router as camera_router, init_camera, get_camera_manager
 from camera.config import CameraConfig
 
@@ -45,6 +46,7 @@ app.include_router(file_router)
 
 movement = MovementBridge(on_event=lambda level, msg: STATE.log_event(level, msg))
 head = HeadBridge()
+battery = BatteryBridge()
 
 _clients: Set[WebSocket] = set()
 
@@ -55,6 +57,7 @@ _clients: Set[WebSocket] = set()
 @app.on_event("startup")
 async def _startup() -> None:
     movement.start()
+    battery.start()
     # Initialize camera module
     camera_config = CameraConfig()
     init_camera(camera_config, teleop_bridge=TELEOP)
@@ -105,6 +108,7 @@ async def _telemetry_loop() -> None:
             "companion": COMPANION.status(),
             "move": {"vx": round(vx, 3), "vy": round(vy, 3), "wz": round(wz, 3)},
             "camera": cam.status() if cam else {"state": "stopped"},
+            "battery": {"soc": battery.soc()},
         }
         await _broadcast(msg)
         await asyncio.sleep(0.2)
@@ -113,6 +117,11 @@ async def _telemetry_loop() -> None:
 # --------------------------------------------------------------------------- #
 # REST
 # --------------------------------------------------------------------------- #
+@app.get("/api/battery")
+async def api_battery() -> JSONResponse:
+    return JSONResponse({"soc": battery.soc()})
+
+
 @app.get("/api/config")
 async def api_config() -> JSONResponse:
     return JSONResponse({
@@ -226,7 +235,7 @@ async def api_ai_command(data: dict):
 async def ws_control(ws: WebSocket) -> None:
     await ws.accept()
     _clients.add(ws)
-    await ws.send_json({"t": "hello", "dry_run": CONFIG.dry_run, "companion": COMPANION.status(), **STATE.snapshot()})
+    await ws.send_json({"t": "hello", "dry_run": CONFIG.dry_run, "companion": COMPANION.status(), "battery": {"soc": battery.soc()}, **STATE.snapshot()})
     for ev in STATE.recent_events(20):
         await ws.send_json(ev)
     try:

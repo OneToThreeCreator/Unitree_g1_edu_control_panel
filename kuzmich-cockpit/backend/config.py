@@ -44,6 +44,9 @@ class Config:
     host: str = _env("COCKPIT_HOST", "0.0.0.0")
     port: int = int(_env("COCKPIT_PORT", "8080"))
 
+    # --- Батарея (DDS rt/bmsstate) ---
+    battery_dds_topic: str = _env("BATTERY_DDS_TOPIC", "rt/bmsstate")
+
     # --- Движение (Unitree SDK напрямую) ---
     sdk_interface: str = _env("SDK_INTERFACE", "eth0")
     move_repeat_s: float = 0.05          # 20 Гц, как в v3_motion

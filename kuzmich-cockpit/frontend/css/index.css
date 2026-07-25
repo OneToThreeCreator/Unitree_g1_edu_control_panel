@@ -1,4 +1,3 @@
-.badge{font-size:11px;padding:3px 8px;border-radius:20px;border:1px solid var(--line);color:var(--dim)}
 .badge.dry{color:var(--warn);border-color:var(--warn)}
 .dot{width:9px;height:9px;border-radius:50%;background:var(--err);display:inline-block}
 .dot.on{background:var(--ok)}
