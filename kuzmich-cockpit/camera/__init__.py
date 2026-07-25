@@ -84,6 +84,7 @@ async def camera_snapshot():
 
 
 # --- WebRTC signaling (Janus Streaming plugin) ---
+_pending_ice: list = []  # Buffer ICE candidates until handle is ready
 
 
 @router.post("/webrtc/offer")
@@ -94,9 +95,15 @@ async def webrtc_offer(data: Dict[str, Any]):
     1. Browser sends SDP offer
     2. Backend creates Janus session, attaches to Streaming plugin
     3. Sends "watch" with SDP offer to Janus
-    4. Janus returns SDP answer
-    5. Returns answer to browser
+    4. Janus returns SDP offer (in jsep)
+    5. Returns offer to browser
+    6. Browser creates answer, sends back
+    7. Backend sends answer via trickle to Janus
+    8. Backend calls start
     """
+    global _pending_ice
+    _pending_ice = []
+
     if _camera_manager is None or _janus_client is None:
         raise HTTPException(503, "Camera module not initialized")
 
@@ -121,15 +128,13 @@ async def webrtc_offer(data: Dict[str, Any]):
         # Watch the mountpoint with SDP offer
         result = await _janus_client.watch(mountpoint_id=mountpoint_id, sdp=sdp)
 
-        # Janus Streaming returns SDP offer in jsep (not answer!)
-        # Flow: browser→offer → Janus→offer → browser→answer → Janus→start
+        # Janus Streaming returns SDP offer in jsep
         jsep = result.get("jsep", {})
-        answer_sdp = jsep.get("sdp")
+        janus_sdp = jsep.get("sdp")
 
-        if answer_sdp:
-            # Store session for later answer relay
-            _webrtc_sessions[_janus_client._handle_id] = _janus_client
-            return {"type": "offer", "sdp": answer_sdp}
+        if janus_sdp:
+            log.info("Janus SDP offer received, returning to browser")
+            return {"type": "offer", "sdp": janus_sdp}
 
         plugindata = result.get("plugindata", {})
         data_response = plugindata.get("data", {})
@@ -145,10 +150,8 @@ async def webrtc_offer(data: Dict[str, Any]):
 
 @router.post("/webrtc/answer")
 async def webrtc_answer(data: Dict[str, Any]):
-    """Receive browser SDP answer and forward to Janus.
-
-    Flow: Janus sent offer → browser created answer → now forward to Janus.
-    """
+    """Receive browser SDP answer, forward to Janus via trickle, then start stream."""
+    global _pending_ice
     if _janus_client is None:
         raise HTTPException(503, "Camera module not initialized")
 
@@ -158,9 +161,26 @@ async def webrtc_answer(data: Dict[str, Any]):
         raise HTTPException(400, "Expected SDP answer with type='answer'")
 
     try:
-        # Start the stream with the answer
+        # Send SDP answer to Janus via trickle
+        answer_candidate = {
+            "sdpMid": "0",
+            "sdpMLineIndex": 0,
+            "candidate": sdp
+        }
+        await _janus_client.trickle_ice(answer_candidate)
+        log.info("SDP answer sent to Janus via trickle")
+
+        # Flush any buffered ICE candidates
+        for c in _pending_ice:
+            try:
+                await _janus_client.trickle_ice(c)
+            except Exception:
+                pass
+        _pending_ice = []
+
+        # Start the stream
         await _janus_client.start()
-        log.info("WebRTC answer forwarded to Janus, stream started")
+        log.info("WebRTC stream started")
         return {"status": "ok"}
     except Exception as e:
         log.error("WebRTC answer failed: %s", e)
@@ -169,20 +189,26 @@ async def webrtc_answer(data: Dict[str, Any]):
 
 @router.post("/webrtc/ice")
 async def webrtc_ice(data: Dict[str, Any]):
-    """Forward ICE candidate to Janus."""
-    if _janus_client is None:
-        raise HTTPException(503, "Camera module not initialized")
+    """Buffer ICE candidate or forward to Janus if handle is ready."""
+    global _pending_ice
 
     candidate = data.get("candidate")
     if not candidate:
         raise HTTPException(400, "Missing ICE candidate")
+
+    # If handle not ready, buffer the candidate
+    if _janus_client is None or _janus_client._handle_id is None:
+        _pending_ice.append(candidate)
+        log.info("ICE candidate buffered (%d pending)", len(_pending_ice))
+        return {"status": "buffered"}
 
     try:
         await _janus_client.trickle_ice(candidate)
         return {"status": "ok"}
     except Exception as e:
         log.warning("ICE trickle failed: %s", e)
-        return {"status": "error", "detail": str(e)}
+        _pending_ice.append(candidate)
+        return {"status": "buffered"}
 
 
 @router.post("/webrtc/hangup")
