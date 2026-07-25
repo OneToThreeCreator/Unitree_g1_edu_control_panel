@@ -112,8 +112,13 @@ async def webrtc_offer(data: Dict[str, Any]):
         await _janus_client.create_session()
         await _janus_client.attach_plugin("janus.plugin.streaming")
 
-        # Watch the mountpoint with SDP offer (ID 1 = H.265 stream)
-        result = await _janus_client.watch(mountpoint_id=1, sdp=sdp)
+        # Detect H.265 support from SDP offer
+        has_h265 = "H265" in sdp.upper() or "HEVC" in sdp.upper()
+        mountpoint_id = 1 if has_h265 else 2  # 1=H.265, 2=H.264
+        log.info("WebRTC: browser %s, using mountpoint %d", "H.265" if has_h265 else "H.264", mountpoint_id)
+
+        # Watch the mountpoint with SDP offer
+        result = await _janus_client.watch(mountpoint_id=mountpoint_id, sdp=sdp)
 
         # Extract SDP answer from Janus event
         plugindata = result.get("plugindata", {})
@@ -122,7 +127,7 @@ async def webrtc_offer(data: Dict[str, Any]):
 
         if answer_sdp:
             # Start the stream after getting SDP answer
-            await _janus_client.start(mountpoint_id=1)
+            await _janus_client.start(mountpoint_id=mountpoint_id)
             return {"type": "answer", "sdp": answer_sdp}
 
         log.warning("Janus event did not contain SDP answer: %s", result)
