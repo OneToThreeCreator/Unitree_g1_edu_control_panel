@@ -161,14 +161,21 @@ async def webrtc_answer(data: Dict[str, Any]):
         raise HTTPException(400, "Expected SDP answer with type='answer'")
 
     try:
-        # Send SDP answer to Janus via trickle
-        answer_candidate = {
-            "sdpMid": "0",
-            "sdpMLineIndex": 0,
-            "candidate": sdp
+        # Send SDP answer to Janus via trickle with jsep
+        session = await _janus_client._get_session()
+        payload = {
+            "transaction": _janus_client._transaction(),
+            "session_id": _janus_client._session_id,
+            "handle_id": _janus_client._handle_id,
+            "janus": "trickle",
+            "candidate": {"sdpMid": "0", "sdpMLineIndex": 0, "candidate": "a=end-of-candidates"},
+            "jsep": {"type": "answer", "sdp": sdp}
         }
-        await _janus_client.trickle_ice(answer_candidate)
-        log.info("SDP answer sent to Janus via trickle")
+        url = f"{_janus_client._base_url}/janus/{_janus_client._session_id}/{_janus_client._handle_id}"
+        async with session.post(url, json=payload) as resp:
+            result = await resp.json()
+            log.info("SDP answer sent to Janus: %s", result.get("janus"))
+
 
         # Flush any buffered ICE candidates
         for c in _pending_ice:
