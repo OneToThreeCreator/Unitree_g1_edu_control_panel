@@ -453,9 +453,14 @@ async function connectWebRTC() {
   pc.addTransceiver("video", { direction: "recvonly" });
 
   pc.oniceconnectionstatechange = () => {
+    console.log("[CAM] ICE state:", pc.iceConnectionState);
     if (pc.iceConnectionState === "failed" || pc.iceConnectionState === "disconnected") {
       updateCamStatus("error");
     }
+  };
+
+  pc.onconnectionstatechange = () => {
+    console.log("[CAM] Connection state:", pc.connectionState);
   };
 
   // Send ICE candidates to server for Janus SFU
