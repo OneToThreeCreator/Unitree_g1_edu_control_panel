@@ -218,20 +218,21 @@ class CameraManager:
         gst_env["GST_PLUGIN_PATH"] = ws_bin
 
         # DRY_RUN pipeline: videotestsrc → tee → MJPEG / raw BGR / RTP H.265+H.264
+        # All queues use leaky=downstream to prevent tee blocking on slow branches
         rtp_port = self._config.janus_rtp_h265_port
         rtp_h264_port = self._config.janus_rtp_h264_port
         color_pipeline = (
             f"videotestsrc is-live=true ! "
             f"videoconvert ! video/x-raw,format=BGR,width={w},height={h},framerate={fps}/1 ! "
             f"tee name=t "
-            f"t. ! queue ! jpegenc quality=80 "
+            f"t. ! queue leaky=downstream max-size-buffers=1 ! jpegenc quality=80 "
             f"! websocketsink host=0.0.0.0 port={self._config.ws_raw_bgr_port} "
-            f"t. ! queue ! videoconvert ! video/x-raw,format=BGR "
+            f"t. ! queue leaky=downstream max-size-buffers=1 ! videoconvert ! video/x-raw,format=BGR "
             f"! websocketsink host=0.0.0.0 port={self._config.ws_raw_bgr_port + 2} "
-            f"t. ! queue ! videoconvert ! video/x-raw,format=I420 "
+            f"t. ! queue leaky=downstream max-size-buffers=1 ! videoconvert ! video/x-raw,format=I420 "
             f"! x265enc key-int-max=30 speed-preset=ultrafast ! h265parse ! rtph265pay config-interval=1 "
             f"! udpsink host=127.0.0.1 port={rtp_port} "
-            f"t. ! queue ! videoconvert ! video/x-raw,format=I420 "
+            f"t. ! queue leaky=downstream max-size-buffers=1 ! videoconvert ! video/x-raw,format=I420 "
             f"! x264enc tune=zerolatency speed-preset=ultrafast ! h264parse ! rtph264pay config-interval=1 "
             f"! udpsink host=127.0.0.1 port={rtp_h264_port}"
         )
