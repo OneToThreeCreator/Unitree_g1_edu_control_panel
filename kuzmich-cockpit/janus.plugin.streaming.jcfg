@@ -1,0 +1,28 @@
+general: {
+    admin_key = "janusadmin"
+    events = false
+}
+
+1: {
+    type = "rtp"
+    id = 1
+    description = "Unitree G1 Camera H.265"
+    audio = false
+    video = true
+    videoport = 5004
+    videopt = 96
+    videocodec = "h265"
+    videobitrate = 4000
+}
+
+2: {
+    type = "rtp"
+    id = 2
+    description = "Unitree G1 Camera H.264"
+    audio = false
+    video = true
+    videoport = 5006
+    videopt = 96
+    videocodec = "h264"
+    videobitrate = 6000
+}
