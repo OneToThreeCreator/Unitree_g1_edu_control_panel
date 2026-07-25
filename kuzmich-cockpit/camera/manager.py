@@ -37,6 +37,7 @@ class CameraManager:
         self._poll_task: Optional[asyncio.Task] = None
         self._gst_process: Optional[subprocess.Popen] = None
         self._gst_depth_process: Optional[subprocess.Popen] = None
+        self._gst_rtp_h264_process: Optional[subprocess.Popen] = None
 
     @property
     def state(self) -> CameraState:
@@ -217,7 +218,7 @@ class CameraManager:
         ws_bin = os.path.join(os.path.dirname(os.path.dirname(__file__)), "gstwebsocketsink-bin")
         gst_env["GST_PLUGIN_PATH"] = ws_bin
 
-        # DRY_RUN pipeline: videotestsrc → tee → MJPEG / raw BGR / RTP H.265+H.264
+        # DRY_RUN pipeline: videotestsrc → tee → MJPEG / raw BGR / RTP H.265
         # All queues use leaky=downstream to prevent tee blocking
         rtp_port = self._config.janus_rtp_h265_port
         rtp_h264_port = self._config.janus_rtp_h264_port
@@ -231,15 +232,12 @@ class CameraManager:
             f"! websocketsink host=0.0.0.0 port={self._config.ws_raw_bgr_port + 2} "
             f"t. ! queue leaky=downstream max-size-buffers=1 ! videoconvert ! video/x-raw,format=I420 "
             f"! x265enc key-int-max=30 speed-preset=ultrafast ! h265parse ! rtph265pay config-interval=1 "
-            f"! udpsink host=127.0.0.1 port={rtp_port} "
-            f"t. ! queue leaky=downstream max-size-buffers=1 ! videoconvert ! video/x-raw,format=I420 "
-            f"! x264enc tune=zerolatency speed-preset=ultrafast ! h264parse ! rtph264pay config-interval=1 "
-            f"! udpsink host=127.0.0.1 port={rtp_h264_port}"
+            f"! udpsink host=127.0.0.1 port={rtp_port}"
         )
 
         cmd_color = ["gst-launch-1.0", "-e"] + color_pipeline.split(" ")
         log.info("Starting GStreamer DRY_RUN: %s...", " ".join(cmd_color[:8]) + "...")
-        log.info("MJPEG on ws://0.0.0.0:%s, RTP H265→:%s H264→:%s", self._config.ws_raw_bgr_port, rtp_port, rtp_h264_port)
+        log.info("MJPEG on ws://0.0.0.0:%s, RTP H265→:%s", self._config.ws_raw_bgr_port, rtp_port)
 
         try:
             self._gst_process = subprocess.Popen(
@@ -252,6 +250,26 @@ class CameraManager:
             log.error("gst-launch-1.0 not found")
         except Exception as e:
             log.error("Failed to start GStreamer DRY_RUN: %s", e)
+            return
+
+        # H.264 RTP: separate process to avoid tee blocking with slow x264enc init
+        rtp_h264_pipeline = (
+            f"videotestsrc is-live=true ! "
+            f"videoconvert ! video/x-raw,format=I420,width={w},height={h},framerate={fps}/1 ! "
+            f"x264enc tune=zerolatency speed-preset=ultrafast key-int-max=30 ! h264parse ! rtph264pay config-interval=1 "
+            f"! udpsink host=127.0.0.1 port={rtp_h264_port}"
+        )
+        cmd_rtp_h264 = ["gst-launch-1.0", "-e"] + rtp_h264_pipeline.split(" ")
+        try:
+            self._gst_rtp_h264_process = subprocess.Popen(
+                cmd_rtp_h264, env=gst_env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                preexec_fn=lambda: signal.signal(signal.SIGINT, signal.SIG_IGN),
+            )
+            self._log_gst_stderr(self._gst_rtp_h264_process)
+            log.info("GStreamer RTP H.264 started (pid=%s) →:%s",
+                     self._gst_rtp_h264_process.pid, rtp_h264_port)
+        except Exception as e:
+            log.warning("Failed to start H.264 RTP: %s", e)
 
     def _log_gst_stderr(self, proc: subprocess.Popen) -> None:
         """Log GStreamer stderr in background thread."""
@@ -262,7 +280,7 @@ class CameraManager:
 
     def _stop_gstreamer(self) -> None:
         """Stop all GStreamer pipelines."""
-        for proc in [self._gst_process, self._gst_depth_process]:
+        for proc in [self._gst_process, self._gst_depth_process, self._gst_rtp_h264_process]:
             if proc is None:
                 continue
             if proc.poll() is not None:
