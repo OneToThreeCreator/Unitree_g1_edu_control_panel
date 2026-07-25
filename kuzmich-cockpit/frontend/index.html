@@ -179,9 +179,9 @@ function updateBattery(b){
 }
 
 function handle(m){
-  if(m.t==="hello"){ applyState(m); $("#dry").style.display=m.dry_run?"":"none"; if(m.companion) applyCompanion(m.companion); if(m.battery) updateBattery(m.battery); }
+  if(m.t==="hello"){ applyState(m); $("#dry").style.display=m.dry_run?"":"none"; if(m.companion) applyCompanion(m.companion); if(m.battery) updateBattery(m.battery); if(m.camera) syncCameraFromTelemetry(m.camera); }
   else if(m.t==="telemetry"){ applyState(m); $("#tvx").textContent=m.move.vx.toFixed(2);
-    $("#tvy").textContent=m.move.vy.toFixed(2); $("#twz").textContent=m.move.wz.toFixed(2); if(m.companion) applyCompanion(m.companion); if(m.battery) updateBattery(m.battery); }
+    $("#tvy").textContent=m.move.vy.toFixed(2); $("#twz").textContent=m.move.wz.toFixed(2); if(m.companion) applyCompanion(m.companion); if(m.battery) updateBattery(m.battery); if(m.camera) syncCameraFromTelemetry(m.camera); }
   else if(m.t==="event"){ logEvent(m); }
   else if(m.t==="ai_reply"){ addMsg("bot",m.text); }
 }
@@ -383,7 +383,7 @@ $("#aiText").addEventListener("keydown",e=>{if(e.key==="Enter")askAI();});
 function addMsg(who,text){ const d=document.createElement("div"); d.className="msg "+who; d.textContent=text; $("#chat").appendChild(d); $("#chat").scrollTop=1e9; }
 
 // -------- Видео --------
-let camActive = false, camPeer = null, camWs = null, camServerActive = false;
+let camActive = false, camPeer = null, camWs = null, camServerActive = false, camToggleTime = 0;
 
 function updateCamStatus(status) {
   const el = $("#camStatus");
@@ -518,28 +518,41 @@ function connectMjpeg() {
 
 // Camera Share Server toggle — controls backend server
 $("#camServerToggle").onclick = async () => {
-  camServerActive = !camServerActive;
+  camToggleTime = Date.now();
+  const turningOn = !camServerActive;
   const label = $("#camServerLabel");
-  if (camServerActive) {
-    await API.cameraStart().catch(()=>{});
-    label.textContent = "Camera Share Server: ON";
-    logEvent({t:"event",level:"info",msg:"Camera server запущен",ts:Date.now()/1000});
-  } else {
-    disconnectVideo();
-    camActive = false;
-    $("#camToggle").checked = false;
-    await API.cameraStop().catch(()=>{});
-    label.textContent = "Camera Share Server: OFF";
-    updateCamStatus("");
-    logEvent({t:"event",level:"info",msg:"Camera server остановлен",ts:Date.now()/1000});
+  try {
+    if (turningOn) {
+      await API.cameraStart();
+      camServerActive = true;
+      label.textContent = "Camera Share Server: ON";
+      logEvent({t:"event",level:"info",msg:"Camera server запущен",ts:Date.now()/1000});
+    } else {
+      disconnectVideo();
+      camActive = false;
+      $("#camToggle").checked = false;
+      await API.cameraStop();
+      camServerActive = false;
+      label.textContent = "Camera Share Server: OFF";
+      updateCamStatus("");
+      logEvent({t:"event",level:"info",msg:"Camera server остановлен",ts:Date.now()/1000});
+    }
+  } catch(e) {
+    // API failed — revert checkbox to actual backend state
+    console.warn("[CAM] toggle failed:", e);
+    await syncCameraServerState();
+    return;
   }
   updateCamToggleState();
 };
 
 // Video display toggle — client-side only
 $("#camToggle").onclick = async () => {
-  if (!camServerActive) return;
-  camActive = !camActive;
+  if (!camServerActive) {
+    $("#camToggle").checked = false;
+    return;
+  }
+  camActive = $("#camToggle").checked;
   if (camActive) {
     connectVideo();
   } else {
@@ -585,22 +598,23 @@ function tryVideo() { /* no-op: camera is toggled by user via camToggle */ }
 async function syncCameraServerState() {
   try {
     const st = await API.cameraStatus();
-    const serverOn = st.state === "local" || st.state === "relay";
+    syncCameraFromTelemetry(st, true);
+  } catch(e) {
+    console.warn("Camera status sync failed:", e);
+  }
+}
+
+function syncCameraFromTelemetry(cam, force) {
+  // Don't override user-initiated toggle while backend processes the state change
+  if (!force && Date.now() - camToggleTime < 1000) return;
+  const serverOn = cam.state === "local" || cam.state === "relay";
+  if (camServerActive !== serverOn) {
     camServerActive = serverOn;
     const srvToggle = $("#camServerToggle");
     const srvLabel = $("#camServerLabel");
     srvToggle.checked = serverOn;
     srvLabel.textContent = serverOn ? "Camera Share Server: ON" : "Camera Share Server: OFF";
     updateCamToggleState();
-    // Auto-connect video in dry_run mode
-    if (cfg && cfg.dry_run && serverOn && !camActive) {
-      camActive = true;
-      connectVideo();
-      updateCamStatus("connecting");
-      updateCamToggleState();
-    }
-  } catch(e) {
-    console.warn("Camera status sync failed:", e);
   }
 }
 
