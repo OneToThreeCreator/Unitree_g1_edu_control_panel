@@ -105,7 +105,7 @@ class JanusClient:
     async def watch(self, mountpoint_id: int = 1, sdp: str = "") -> Dict[str, Any]:
         """Watch a streaming mountpoint (subscriber flow).
 
-        Sends SDP offer to Janus, receives SDP answer.
+        Sends SDP offer to Janus, polls for SDP answer.
         """
         if not self._handle_id:
             raise JanusError(-1, "No handle — call attach_plugin first")
@@ -114,7 +114,6 @@ class JanusClient:
             "request": "watch",
             "id": mountpoint_id,
         }
-        # If SDP provided, include it for trickle ICE
         if sdp:
             body["offer"] = {"type": "offer", "sdp": sdp}
 
@@ -134,7 +133,30 @@ class JanusClient:
             if data.get("janus") == "error":
                 err = data.get("error", {})
                 raise JanusError(err.get("code", -1), err.get("reason", "unknown"))
-            return data
+            # Janus returns ack immediately, SDP answer comes via event
+            # Poll for the event
+            return await self._poll_for_event(session, timeout=5)
+
+    async def _poll_for_event(self, session: aiohttp.ClientSession, timeout: float = 5) -> Dict[str, Any]:
+        """Poll Janus long-poll endpoint for events."""
+        import time
+        url = f"{self._base_url}/janus/{self._session_id}"
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            try:
+                async with session.get(url) as resp:
+                    data = await resp.json()
+                    janus_type = data.get("janus")
+                    if janus_type == "event":
+                        return data
+                    elif janus_type == "ack":
+                        continue
+                    elif janus_type == "error":
+                        raise JanusError(data.get("error", {}).get("code", -1), data.get("error", {}).get("reason", "unknown"))
+            except asyncio.TimeoutError:
+                break
+            await asyncio.sleep(0.1)
+        raise JanusError(-1, "Timeout waiting for Janus event")
 
     async def start(self, mountpoint_id: int = 1) -> Dict[str, Any]:
         """Start receiving media after watch."""

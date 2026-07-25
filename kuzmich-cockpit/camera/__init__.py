@@ -116,19 +116,18 @@ async def webrtc_offer(data: Dict[str, Any]):
         mountpoint_id = _camera_manager.config.janus_room_id
         result = await _janus_client.watch(mountpoint_id=mountpoint_id, sdp=sdp)
 
-        # Janus may return the answer asynchronously via events
-        # For synchronous flow, check the response directly
+        # Extract SDP answer from Janus event
         plugindata = result.get("plugindata", {})
         data_response = plugindata.get("data", {})
         answer_sdp = data_response.get("sdp")
 
         if answer_sdp:
+            # Start the stream after getting SDP answer
+            await _janus_client.start(mountpoint_id=mountpoint_id)
             return {"type": "answer", "sdp": answer_sdp}
 
-        # If no SDP in response, Janus will send it via event
-        # For now, return error
-        log.warning("Janus did not return SDP answer synchronously: %s", result)
-        raise HTTPException(502, "Janus did not return SDP answer — check Janus Streaming config")
+        log.warning("Janus event did not contain SDP answer: %s", result)
+        raise HTTPException(502, "Janus did not return SDP answer")
 
     except Exception as e:
         log.error("WebRTC signaling failed: %s", e)
