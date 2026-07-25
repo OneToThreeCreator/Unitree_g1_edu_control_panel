@@ -252,11 +252,8 @@ class CameraManager:
         rtp_pipeline = (
             f"videotestsrc is-live=true ! "
             f"videoconvert ! video/x-raw,format=I420,width={w},height={h},framerate={fps}/1 ! "
-            f"tee name=t "
-            f"t. ! queue ! x265enc key-int-max=30 speed-preset=ultrafast ! h265parse ! rtph265pay config-interval=1 "
-            f"! udpsink host=127.0.0.1 port={rtp_port} "
-            f"t. ! queue ! x264enc tune=zerolatency speed-preset=ultrafast ! h264parse ! rtph264pay config-interval=1 "
-            f"! udpsink host=127.0.0.1 port={rtp_h264_port}"
+            f"x265enc key-int-max=30 speed-preset=ultrafast ! h265parse ! rtph265pay config-interval=1 "
+            f"! udpsink host=127.0.0.1 port={rtp_port}"
         )
         cmd_rtp = ["gst-launch-1.0", "-e"] + rtp_pipeline.split(" ")
         try:
