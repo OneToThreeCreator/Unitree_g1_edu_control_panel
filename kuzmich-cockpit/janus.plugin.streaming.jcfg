@@ -3,7 +3,7 @@ general: {
     events = false
 }
 
-1: {
+"1": {
     type = "rtp"
     id = 1
     description = "Unitree G1 Camera H.265"
@@ -15,7 +15,7 @@ general: {
     videobitrate = 4000
 }
 
-2: {
+"2": {
     type = "rtp"
     id = 2
     description = "Unitree G1 Camera H.264"
