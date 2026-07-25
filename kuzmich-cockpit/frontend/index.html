@@ -442,13 +442,15 @@ async function connectWebRTC() {
   const pc = new RTCPeerConnection({ iceServers: [{ urls: stunUrl }] });
   camPeer = pc;
 
-  pc.addTransceiver("video", { direction: "recvonly" });
+  pc.ontrack = (event) => {
     const v = $("#feedVideo");
     v.srcObject = event.streams[0];
     v.style.display = "";
     $("#feedph").style.display = "none";
     v.play().then(() => updateCamStatus("live")).catch(() => {});
   };
+
+  pc.addTransceiver("video", { direction: "recvonly" });
 
   pc.oniceconnectionstatechange = () => {
     if (pc.iceConnectionState === "failed" || pc.iceConnectionState === "disconnected") {
