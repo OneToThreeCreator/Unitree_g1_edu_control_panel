@@ -1,14 +1,15 @@
 #!/bin/bash
-# Build Janus 1.4.1 for Unitree G1 camera streaming
-# Run this on WSL/Ubuntu
+# Build Janus 1.4.1 locally for Unitree G1 camera streaming
+# No sudo needed — everything stays in the project directory
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 JANUS_SRC="$PROJECT_DIR/janus"
 JANUS_CONF_SRC="$PROJECT_DIR/janus-conf"
+JANUS_LOCAL="$PROJECT_DIR/janus-local"
 
-echo "=== Building Janus 1.4.1 ==="
+echo "=== Building Janus 1.4.1 (local) ==="
 
 # Install build dependencies
 sudo apt-get update
@@ -19,7 +20,7 @@ sudo apt-get install -y \
     libsrtp2-dev \
     gengetopt pkg-config cmake automake autoconf libtool
 
-# Remove old build artifacts
+# Clean old build
 echo "Cleaning old build..."
 cd "$JANUS_SRC"
 make clean 2>/dev/null || true
@@ -29,10 +30,10 @@ make distclean 2>/dev/null || true
 echo "Running autogen.sh..."
 ./autogen.sh
 
-# Configure with minimal plugins
+# Configure — install locally, no sudo
 echo "Configuring Janus..."
 ./configure \
-    --prefix=/usr/local \
+    --prefix="$JANUS_LOCAL" \
     --enable-websockets \
     --enable-rest \
     --disable-rabbitmq \
@@ -55,17 +56,14 @@ echo "Configuring Janus..."
 echo "Building..."
 make -j$(nproc)
 
-# Install
-echo "Installing..."
-sudo make install
-
-# Verify installation
-echo ""
-echo "=== Verifying installation ==="
-echo "Binary: $(which janus)"
-echo "Plugins: $(ls /usr/local/lib/janus/plugins/*.so 2>/dev/null | wc -l) .so files"
-echo "Transports: $(ls /usr/local/lib/janus/transports/*.so 2>/dev/null | wc -l) .so files"
+# Install locally (no sudo)
+echo "Installing locally to $JANUS_LOCAL..."
+make install
 
 echo ""
-echo "=== Janus 1.4.1 installed ==="
-echo "Start: janus -F $JANUS_CONF_SRC -P /usr/local/lib/janus/plugins"
+echo "=== Janus 1.4.1 installed locally ==="
+echo "Binary: $JANUS_LOCAL/bin/janus"
+echo "Plugins: $JANUS_LOCAL/lib/janus/plugins/"
+echo "Configs: $JANUS_CONF_SRC/"
+echo ""
+echo "To start: bash scripts/start-janus.sh"

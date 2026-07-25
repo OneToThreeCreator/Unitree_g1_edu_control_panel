@@ -1,8 +1,6 @@
 # Minimal Janus config for Unitree G1 camera streaming
+# Paths are set via -F (configs) and -P (plugins) flags
 general: {
-    configs_folder = "/etc/janus"
-    plugins_folder = "/usr/lib/x86_64-linux-gnu/janus/plugins"
-    transports_folder = "/usr/lib/x86_64-linux-gnu/janus/transports"
     log_to_stdout = true
     debug_level = 4
     server_name = "Unitree G1 Janus"
