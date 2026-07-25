@@ -24,6 +24,7 @@ sudo apt-get install -y \
   libmicrohttpd-dev libjansson-dev libssl-dev \
   libglib2.0-dev libopus-dev libogg-dev libcurl4-openssl-dev \
   liblua5.3-dev libconfig-dev libnice-dev libwebsockets-dev \
+  libsrtp2-dev \
   gengetopt pkg-config cmake automake autoconf libtool
 
 # Build Janus
