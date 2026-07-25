@@ -163,7 +163,9 @@ async def webrtc_answer(data: Dict[str, Any]):
     try:
         # Send SDP answer to Janus via trickle with jsep
         session = await _janus_client._get_session()
-        payload = {
+        
+        # Step 1: Send trickle with SDP answer
+        trickle_payload = {
             "transaction": _janus_client._transaction(),
             "session_id": _janus_client._session_id,
             "handle_id": _janus_client._handle_id,
@@ -172,22 +174,39 @@ async def webrtc_answer(data: Dict[str, Any]):
             "jsep": {"type": "answer", "sdp": sdp}
         }
         url = f"{_janus_client._base_url}/janus/{_janus_client._session_id}/{_janus_client._handle_id}"
-        async with session.post(url, json=payload) as resp:
+        async with session.post(url, json=trickle_payload) as resp:
             result = await resp.json()
-            log.info("SDP answer sent to Janus: %s", result.get("janus"))
+            log.info("Trickle with SDP answer: %s", result.get("janus"))
 
-
-        # Flush any buffered ICE candidates
+        # Step 2: Flush buffered ICE candidates
         for c in _pending_ice:
             try:
-                await _janus_client.trickle_ice(c)
+                ice_payload = {
+                    "transaction": _janus_client._transaction(),
+                    "session_id": _janus_client._session_id,
+                    "handle_id": _janus_client._handle_id,
+                    "janus": "trickle",
+                    "candidate": c
+                }
+                async with session.post(url, json=ice_payload) as resp:
+                    pass
             except Exception:
                 pass
         _pending_ice = []
 
-        # Start the stream
-        await _janus_client.start()
-        log.info("WebRTC stream started")
+        # Step 3: Start the stream
+        start_payload = {
+            "transaction": _janus_client._transaction(),
+            "session_id": _janus_client._session_id,
+            "handle_id": _janus_client._handle_id,
+            "janus": "message",
+            "body": {"request": "start"},
+            "jsep": {"type": "answer", "sdp": sdp}
+        }
+        async with session.post(url, json=start_payload) as resp:
+            result = await resp.json()
+            log.info("Start stream: %s", result.get("janus"))
+
         return {"status": "ok"}
     except Exception as e:
         log.error("WebRTC answer failed: %s", e)
