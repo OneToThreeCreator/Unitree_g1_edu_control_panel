@@ -580,6 +580,13 @@ async function syncCameraServerState() {
     srvToggle.checked = serverOn;
     srvLabel.textContent = serverOn ? "Camera Share Server: ON" : "Camera Share Server: OFF";
     updateCamToggleState();
+    // Auto-connect video in dry_run mode
+    if (cfg && cfg.dry_run && serverOn && !camActive) {
+      camActive = true;
+      connectVideo();
+      updateCamStatus("connecting");
+      updateCamToggleState();
+    }
   } catch(e) {
     console.warn("Camera status sync failed:", e);
   }

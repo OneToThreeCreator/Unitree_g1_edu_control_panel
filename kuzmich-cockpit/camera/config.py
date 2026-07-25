@@ -26,6 +26,9 @@ def _env_bool(name: str, default: bool) -> bool:
 
 @dataclass
 class CameraConfig:
+    # --- Mode ---
+    dry_run: bool = _env_bool("COCKPIT_DRY_RUN", True)
+
     # --- Capture (color) ---
     color_width: int = _env_int("CAM_COLOR_WIDTH", 1280)
     color_height: int = _env_int("CAM_COLOR_HEIGHT", 720)

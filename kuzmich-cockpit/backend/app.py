@@ -58,14 +58,13 @@ async def _startup() -> None:
     # Initialize camera module
     camera_config = CameraConfig()
     init_camera(camera_config, teleop_bridge=TELEOP)
-    # Auto-start camera if not dry_run
-    if not CONFIG.dry_run:
-        cam = get_camera_manager()
-        if cam:
-            try:
-                await cam.start()
-            except Exception as e:
-                log.warning("Camera auto-start failed: %s", e)
+    # Always start camera — dry_run uses videotestsrc, real mode uses RealSense
+    cam = get_camera_manager()
+    if cam:
+        try:
+            await cam.start()
+        except Exception as e:
+            log.warning("Camera auto-start failed: %s", e)
     asyncio.get_event_loop().create_task(_telemetry_loop())
     log.info("Cockpit up. dry_run=%s  http://%s:%s", CONFIG.dry_run, CONFIG.host, CONFIG.port)
 

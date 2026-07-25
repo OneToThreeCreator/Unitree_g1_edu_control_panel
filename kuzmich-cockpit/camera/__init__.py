@@ -37,8 +37,10 @@ def get_camera_manager() -> Optional[CameraManager]:
 @router.get("/status")
 async def camera_status():
     if _camera_manager is None:
-        return {"state": "stopped", "backend": None}
-    return _camera_manager.status()
+        return {"state": "stopped", "backend": None, "dry_run": False}
+    st = _camera_manager.status()
+    st["dry_run"] = _camera_manager.config.dry_run
+    return st
 
 
 @router.put("/start")

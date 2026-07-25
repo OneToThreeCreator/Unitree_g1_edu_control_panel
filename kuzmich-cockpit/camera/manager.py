@@ -66,6 +66,12 @@ class CameraManager:
         if self._state not in (CameraState.STOPPED, CameraState.DISABLED):
             return
 
+        if self._config.dry_run:
+            log.info("Starting DRY_RUN mode (videotestsrc)")
+            self._state = CameraState.LOCAL
+            self._start_gstreamer_dry()
+            return
+
         # Check if Teleop is already running
         teleop_running = False
         if self._teleop:
@@ -178,6 +184,46 @@ class CameraManager:
                 log.info("GStreamer depth started (pid=%s)", self._gst_depth_process.pid)
             except Exception as e:
                 log.warning("Failed to start depth pipeline: %s", e)
+
+    def _start_gstreamer_dry(self) -> None:
+        """Launch GStreamer pipeline with videotestsrc for DRY_RUN mode."""
+        if self._gst_process and self._gst_process.poll() is None:
+            log.info("GStreamer already running (pid=%s)", self._gst_process.pid)
+            return
+
+        w, h, fps = self._config.color_width, self._config.color_height, self._config.color_fps
+
+        import os
+        gst_env = os.environ.copy()
+        ws_bin = os.path.join(os.path.dirname(os.path.dirname(__file__)), "gstwebsocketsink-bin")
+        gst_env["GST_PLUGIN_PATH"] = ws_bin
+
+        # DRY_RUN pipeline: videotestsrc → tee → MJPEG / raw BGR
+        # Software encoding only — no nvvidconv (not available on dev machines)
+        color_pipeline = (
+            f"videotestsrc is-live=true ! "
+            f"videoconvert ! video/x-raw,format=BGR,width={w},height={h},framerate={fps}/1 ! "
+            f"tee name=t "
+            f"t. ! queue ! jpegenc quality=80 "
+            f"! websocketsink host=0.0.0.0 port={self._config.ws_raw_bgr_port} "
+            f"t. ! queue ! videoconvert ! video/x-raw,format=BGR "
+            f"! websocketsink host=0.0.0.0 port={self._config.ws_raw_bgr_port + 2}"
+        )
+
+        cmd_color = ["gst-launch-1.0", "-e"] + color_pipeline.split(" ")
+        log.info("Starting GStreamer DRY_RUN: %s...", " ".join(cmd_color[:6]) + "...")
+
+        try:
+            self._gst_process = subprocess.Popen(
+                cmd_color, env=gst_env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                preexec_fn=lambda: signal.signal(signal.SIGINT, signal.SIG_IGN),
+            )
+            self._log_gst_stderr(self._gst_process)
+            log.info("GStreamer DRY_RUN started (pid=%s)", self._gst_process.pid)
+        except FileNotFoundError:
+            log.error("gst-launch-1.0 not found")
+        except Exception as e:
+            log.error("Failed to start GStreamer DRY_RUN: %s", e)
 
     def _log_gst_stderr(self, proc: subprocess.Popen) -> None:
         """Log GStreamer stderr in background thread."""
