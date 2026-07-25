@@ -47,11 +47,20 @@ class CameraConfig:
     # nvv4l2h265enc → H.265 (V4L2 M2M, hardware, default)
     # nvv4l2h264enc → H.264 (V4L2 M2M, hardware, fallback)
     # libx265/libx264 → software fallback
-    gst_encoder: str = _env("CAM_GST_ENCODER", "nvv4l2h265enc")
-    gst_bitrate: int = _env_int("CAM_GST_BITRATE", 4000)  # kbps
+    gst_encoder_h265: str = _env("CAM_GST_ENCODER_H265", "nvv4l2h265enc")
+    gst_bitrate_h265: int = _env_int("CAM_GST_BITRATE_H265", 4000)  # kbps
 
-    # --- WebRTC ---
+    # --- H.264 fallback encoder (для браузеров без H.265) ---
+    gst_encoder_h264: str = _env("CAM_GST_ENCODER_H264", "nvv4l2h264enc")
+    gst_bitrate_h264: int = _env_int("CAM_GST_BITRATE_H264", 6000)  # kbps
+
+    # --- WebRTC (Janus SFU) ---
     webrtc_stun_url: str = _env("CAM_WEBRTC_STUN", "stun:stun.l.google.com:19302")
+    janus_http_url: str = _env("CAM_JANUS_HTTP", "http://127.0.0.1:8088")
+    janus_ws_url: str = _env("CAM_JANUS_WS", "ws://127.0.0.1:8188")
+    janus_room_id: int = _env_int("CAM_JANUS_ROOM", 1234)
+    janus_rtp_h265_port: int = _env_int("CAM_JANUS_RTP_H265_PORT", 5004)  # H.265 RTP port
+    janus_rtp_h264_port: int = _env_int("CAM_JANUS_RTP_H264_PORT", 5006)  # H.264 RTP port
 
     # --- GStreamer WebSocket endpoints (сервятся GStreamer напрямую) ---
     ws_raw_bgr_port: int = _env_int("CAM_WS_RAW_PORT", 8082)    # Raw BGR для YOLO

@@ -127,8 +127,8 @@ class CameraManager:
             log.info("GStreamer already running (pid=%s)", self._gst_process.pid)
             return
 
-        encoder = self._config.gst_encoder
-        bitrate = self._config.gst_bitrate
+        encoder_h265 = self._config.gst_encoder_h265
+        bitrate_h265 = self._config.gst_bitrate_h265
         w, h, fps = self._config.color_width, self._config.color_height, self._config.color_fps
 
         # GStreamer env — add websocketsink plugin path
@@ -137,21 +137,31 @@ class CameraManager:
         ws_bin = os.path.join(os.path.dirname(os.path.dirname(__file__)), "gstwebsocketsink-bin")
         gst_env["GST_PLUGIN_PATH"] = ws_bin
 
-        # Color pipeline:
+        # Color pipeline (dual-encode: H.265 + H.264 for browser fallback):
         # appsrc (BGR) → tee
-        #   ├── queue → videoconvert → nvvidconv → encoder → websocketsink:8084 (H.265)
-        #   └── queue → jpegenc → websocketsink:8082 (MJPEG, from raw BGR)
-        #
-        # jpegenc branch: raw BGR → JPEG (software, ~5ms/frame) — без nvvidconv!
-        # encoder branch: raw BGR → BGRx → nvvidconv → H.265 (hardware)
+        #   ├── queue → videoconvert → BGRx → nvvidconv → H.265 encoder → tee
+        #   │   ├── websocketsink:8084 (H.265)
+        #   │   └── rtph265pay → udpsink:5004 (RTP H.265 for Janus)
+        #   ├── queue → videoconvert → BGRx → nvvidconv → H.264 encoder → tee
+        #   │   ├── websocketsink:8086 (H.264)
+        #   │   └── rtph264pay → udpsink:5006 (RTP H.264 for Janus)
+        #   └── queue → jpegenc → websocketsink:8082 (MJPEG)
+        encoder_h264 = self._config.gst_encoder_h264
+        bitrate_h264 = self._config.gst_bitrate_h264
+        rtp_port = self._config.janus_rtp_h265_port
+        rtp_h264_port = self._config.janus_rtp_h264_port
         color_pipeline = (
             f"appsrc name=src is-live=true format=time "
             f"! video/x-raw,format=BGR,width={w},height={h},framerate={fps}/1 "
             f"! tee name=t "
             f"t. ! queue ! videoconvert ! video/x-raw,format=BGRx "
-            f"! nvvidconv "
-            f"! {encoder} bitrate={bitrate} ! h265parse "
-            f"! websocketsink host=0.0.0.0 port={self._config.ws_raw_bgr_port + 2} "
+            f"! nvvidconv ! {encoder_h265} bitrate={bitrate_h265} ! h265parse ! tee name=enc "
+            f"enc. ! queue ! websocketsink host=0.0.0.0 port={self._config.ws_raw_bgr_port + 2} "
+            f"enc. ! queue ! rtph265pay config-interval=1 ! udpsink host=127.0.0.1 port={rtp_port} "
+            f"t. ! queue ! videoconvert ! video/x-raw,format=BGRx "
+            f"! nvvidconv ! {encoder_h264} bitrate={bitrate_h264} ! h264parse ! tee name=enc264 "
+            f"enc264. ! queue ! websocketsink host=0.0.0.0 port={self._config.ws_raw_bgr_port + 4} "
+            f"enc264. ! queue ! rtph264pay config-interval=1 ! udpsink host=127.0.0.1 port={rtp_h264_port} "
             f"t. ! queue ! jpegenc quality=80 "
             f"! websocketsink host=0.0.0.0 port={self._config.ws_raw_bgr_port}"
         )
@@ -207,8 +217,10 @@ class CameraManager:
         ws_bin = os.path.join(os.path.dirname(os.path.dirname(__file__)), "gstwebsocketsink-bin")
         gst_env["GST_PLUGIN_PATH"] = ws_bin
 
-        # DRY_RUN pipeline: videotestsrc → tee → MJPEG / raw BGR
+        # DRY_RUN pipeline: videotestsrc → tee → MJPEG / raw BGR / RTP H.265+H.264
         # Software encoding only — no nvvidconv (not available on dev machines)
+        rtp_port = self._config.janus_rtp_h265_port
+        rtp_h264_port = self._config.janus_rtp_h264_port
         color_pipeline = (
             f"videotestsrc is-live=true ! "
             f"videoconvert ! video/x-raw,format=BGR,width={w},height={h},framerate={fps}/1 ! "
@@ -216,7 +228,11 @@ class CameraManager:
             f"t. ! queue ! jpegenc quality=80 "
             f"! websocketsink host=0.0.0.0 port={self._config.ws_raw_bgr_port} "
             f"t. ! queue ! videoconvert ! video/x-raw,format=BGR "
-            f"! websocketsink host=0.0.0.0 port={self._config.ws_raw_bgr_port + 2}"
+            f"! websocketsink host=0.0.0.0 port={self._config.ws_raw_bgr_port + 2} "
+            f"t. ! queue ! videoconvert ! x265enc key-int-max=30 speed-preset=ultrafast ! h265parse ! rtph265pay config-interval=1 "
+            f"! udpsink host=127.0.0.1 port={rtp_port} "
+            f"t. ! queue ! videoconvert ! x264enc tune=zerolatency speed-preset=ultrafast ! h264parse ! rtph264pay config-interval=1 "
+            f"! udpsink host=127.0.0.1 port={rtp_h264_port}"
         )
 
         cmd_color = ["gst-launch-1.0", "-e"] + color_pipeline.split(" ")
@@ -294,8 +310,12 @@ class CameraManager:
         ws_url = self._config.teleop_ws_url
         codec = self._config.teleop_codec
         stun = self._config.webrtc_stun_url
+        rtp_port = self._config.janus_rtp_h265_port
+        rtp_h264_port = self._config.janus_rtp_h264_port
+        encoder_h264 = self._config.gst_encoder_h264
+        bitrate_h264 = self._config.gst_bitrate_h264
 
-        # Pipeline: receive H.265 from Teleop WebSocket → tee → MJPEG / raw BGR
+        # Pipeline: receive H.265 from Teleop → tee → MJPEG / raw BGR / RTP H.265+H.264
         pipeline = (
             f"websocketclientsrc uri={ws_url}?codec={codec} "
             f"! h265parse ! tee name=t "
@@ -303,7 +323,12 @@ class CameraManager:
             f"! websocketsink host=0.0.0.0 port={self._config.ws_raw_bgr_port + 2} "
             f"t. ! queue ! videoconvert "
             f"! video/x-raw,format=BGR "
-            f"! websocketsink host=0.0.0.0 port={self._config.ws_raw_bgr_port}"
+            f"! websocketsink host=0.0.0.0 port={self._config.ws_raw_bgr_port} "
+            f"t. ! queue ! rtph265pay config-interval=1 "
+            f"! udpsink host=127.0.0.1 port={rtp_port} "
+            f"t. ! queue ! h265parse ! decodebin ! videoconvert ! video/x-raw,format=BGRx "
+            f"! nvvidconv ! {encoder_h264} bitrate={bitrate_h264} ! h264parse ! rtph264pay config-interval=1 "
+            f"! udpsink host=127.0.0.1 port={rtp_h264_port}"
         )
 
         # Split pipeline into argv

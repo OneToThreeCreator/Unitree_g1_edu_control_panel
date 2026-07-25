@@ -442,7 +442,7 @@ async function connectWebRTC() {
   const pc = new RTCPeerConnection({ iceServers: [{ urls: stunUrl }] });
   camPeer = pc;
 
-  pc.ontrack = (event) => {
+  pc.addTransceiver("video", { direction: "recvonly" });
     const v = $("#feedVideo");
     v.srcObject = event.streams[0];
     v.style.display = "";
@@ -453,6 +453,17 @@ async function connectWebRTC() {
   pc.oniceconnectionstatechange = () => {
     if (pc.iceConnectionState === "failed" || pc.iceConnectionState === "disconnected") {
       updateCamStatus("error");
+    }
+  };
+
+  // Send ICE candidates to server for Janus SFU
+  pc.onicecandidate = (event) => {
+    if (event.candidate) {
+      fetch("/api/camera/webrtc/ice", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ candidate: event.candidate })
+      }).catch(() => {});
     }
   };
 

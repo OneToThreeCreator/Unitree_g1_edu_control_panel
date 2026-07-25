@@ -13,9 +13,14 @@ height = 480
 fps = 30
 
 # GStreamer encoder name — определяет codec
-[encoder]
+[encoder_h265]
 name = "nvv4l2h265enc"  # H.265 default. Fallback: nvv4l2h264enc, libx265
 bitrate = 4000           # kbps
+
+# H.264 fallback encoder (для браузеров без H.265)
+[encoder_h264]
+name = "nvv4l2h264enc"  # H.264 hardware encoder
+bitrate = 6000           # kbps (нужно больше чем H.265 для同等质量)
 
 # Fallback chain — пробует по порядку при старте
 [[fallbacks]]
@@ -53,6 +58,14 @@ enabled = false
 
 [webrtc]
 stun_url = "stun:stun.l.google.com:19302"
+
+# Janus SFU — WebRTC multi-viewer
+[janus]
+http_url = "http://127.0.0.1:8088"   # Janus HTTP API
+ws_url = "ws://127.0.0.1:8188"       # Janus WebSocket API
+room_id = 1234                        # VideoRoom ID for camera stream
+rtp_h265_port = 5004                  # UDP port for GStreamer H.265 RTP → Janus
+rtp_h264_port = 5006                  # UDP port for GStreamer H.264 RTP → Janus
 
 # GStreamer WebSocket endpoints (сервятся GStreamer напрямую)
 [websocket]

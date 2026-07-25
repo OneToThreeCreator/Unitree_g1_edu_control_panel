@@ -10,5 +10,6 @@ python-multipart==0.0.20
 
 # Camera module
 websocket-client>=1.0   # Teleop WebSocket (accepts HTTP/1.0 from RobotAdmin)
+aiohttp>=3.8            # Async HTTP client for Janus Gateway API
 av>=10.0                # PyAV — Python bindings для libavcodec (h264_v4l2m2m)
 numpy>=1.20
