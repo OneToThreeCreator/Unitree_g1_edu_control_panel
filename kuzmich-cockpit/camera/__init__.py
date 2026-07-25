@@ -21,6 +21,7 @@ router = APIRouter(prefix="/api/camera", tags=["camera"])
 
 _camera_manager: Optional[CameraManager] = None
 _janus_client: Optional[JanusClient] = None
+_webrtc_sessions: Dict[int, JanusClient] = {}  # handle_id → client
 
 
 def init_camera(config: CameraConfig, teleop_bridge: object = None) -> None:
@@ -112,32 +113,57 @@ async def webrtc_offer(data: Dict[str, Any]):
         await _janus_client.create_session()
         await _janus_client.attach_plugin("janus.plugin.streaming")
 
-        # Detect H.265 support from SDP offer
-        has_h265 = "H265" in sdp.upper() or "HEVC" in sdp.upper()
-        mountpoint_id = 1 if has_h265 else 2  # 1=H.265, 2=H.264
-        log.info("WebRTC: browser %s, using mountpoint %d", "H.265" if has_h265 else "H.264", mountpoint_id)
+        # TODO: detect H.265 support from SDP, for now use mountpoint 1
+        mountpoint_id = 1
+        log.info("WebRTC: using mountpoint %d", mountpoint_id)
 
         # Watch the mountpoint with SDP offer
         result = await _janus_client.watch(mountpoint_id=mountpoint_id, sdp=sdp)
 
-        # Extract SDP answer from Janus event
-        plugindata = result.get("plugindata", {})
-        data_response = plugindata.get("data", {})
-        answer_sdp = data_response.get("sdp")
+        # Janus Streaming returns SDP offer in jsep (not answer!)
+        # Flow: browser→offer → Janus→offer → browser→answer → Janus→start
+        jsep = result.get("jsep", {})
+        answer_sdp = jsep.get("sdp")
 
         if answer_sdp:
-            # Start the stream after getting SDP answer
-            await _janus_client.start(mountpoint_id=mountpoint_id)
-            return {"type": "answer", "sdp": answer_sdp}
+            # Store session for later answer relay
+            _webrtc_sessions[_janus_client._handle_id] = _janus_client
+            return {"type": "offer", "sdp": answer_sdp}
 
-        log.warning("Janus event did not contain SDP answer: %s", result)
-        raise HTTPException(502, "Janus did not return SDP answer")
+        plugindata = result.get("plugindata", {})
+        data_response = plugindata.get("data", {})
+        log.warning("Unexpected Janus response: status=%s", data_response.get("status"))
+        raise HTTPException(502, "Janus did not return SDP")
 
     except Exception as e:
         log.error("WebRTC signaling failed: %s", e)
         if isinstance(e, HTTPException):
             raise
         raise HTTPException(502, f"WebRTC signaling error: {e}")
+
+
+@router.post("/webrtc/answer")
+async def webrtc_answer(data: Dict[str, Any]):
+    """Receive browser SDP answer and forward to Janus.
+
+    Flow: Janus sent offer → browser created answer → now forward to Janus.
+    """
+    if _janus_client is None:
+        raise HTTPException(503, "Camera module not initialized")
+
+    sdp = data.get("sdp")
+    sdp_type = data.get("type")
+    if sdp_type != "answer" or not sdp:
+        raise HTTPException(400, "Expected SDP answer with type='answer'")
+
+    try:
+        # Start the stream with the answer
+        await _janus_client.start()
+        log.info("WebRTC answer forwarded to Janus, stream started")
+        return {"status": "ok"}
+    except Exception as e:
+        log.error("WebRTC answer failed: %s", e)
+        raise HTTPException(502, f"WebRTC answer error: {e}")
 
 
 @router.post("/webrtc/ice")

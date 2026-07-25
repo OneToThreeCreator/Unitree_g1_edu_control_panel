@@ -469,8 +469,7 @@ async function connectWebRTC() {
     }
   };
 
-  pc.addTransceiver("video", { direction: "recvonly" });
-
+  // Step 1: Send browser's SDP offer to server
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
 
@@ -480,15 +479,26 @@ async function connectWebRTC() {
     body: JSON.stringify({ sdp: pc.localDescription.sdp, type: pc.localDescription.type })
   });
 
-  if (!resp.ok) {
-    throw new Error(`WebRTC signaling failed: HTTP ${resp.status}`);
-  }
+  if (!resp.ok) throw new Error("WebRTC signaling failed: HTTP " + resp.status);
 
-  const answer = await resp.json();
-  if (answer.error) throw new Error(answer.error);
-  if (!answer.sdp || !answer.type) throw new Error("Invalid WebRTC answer");
+  const data = await resp.json();
+  if (data.error) throw new Error(data.error);
 
-  await pc.setRemoteDescription(new RTCSessionDescription(answer));
+  // Step 2: Server returns Janus's SDP offer (not answer!)
+  // Set Janus offer as remote description
+  await pc.setRemoteDescription(new RTCSessionDescription(data));
+
+  // Step 3: Create answer and send back to server
+  const answer = await pc.createAnswer();
+  await pc.setLocalDescription(answer);
+
+  const ansResp = await fetch("/api/camera/webrtc/answer", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ sdp: pc.localDescription.sdp, type: pc.localDescription.type })
+  });
+
+  if (!ansResp.ok) throw new Error("WebRTC answer failed: HTTP " + ansResp.status);
 }
 
 function connectMjpeg() {
