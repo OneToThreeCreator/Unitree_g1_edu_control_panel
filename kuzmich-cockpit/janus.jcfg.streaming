@@ -4,7 +4,7 @@ general: {
 }
 
 # Camera H.265 stream
-stream-1: {
+mountpoint-1: {
     type = rtp
     id = 1
     description = "Unitree G1 Camera H.265"
@@ -18,7 +18,7 @@ stream-1: {
 }
 
 # Camera H.264 stream (fallback)
-stream-2: {
+mountpoint-2: {
     type = rtp
     id = 2
     description = "Unitree G1 Camera H.264"
