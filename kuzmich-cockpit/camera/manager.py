@@ -221,6 +221,8 @@ class CameraManager:
 
         # DRY_RUN pipeline: videotestsrc → tee → MJPEG / raw BGR
         # RTP runs as separate processes to avoid tee blocking
+        rtp_port = self._config.janus_rtp_h265_port
+        rtp_h264_port = self._config.janus_rtp_h264_port
         color_pipeline = (
             f"videotestsrc is-live=true ! "
             f"videoconvert ! video/x-raw,format=BGR,width={w},height={h},framerate={fps}/1 ! "
