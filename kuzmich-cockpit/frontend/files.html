@@ -10,6 +10,7 @@
 <body>
 <header>
   <h1>📁 ФАЙЛОВЫЙ МЕНЕДЖЕР</h1>
+  <span id="batt" class="badge batt">⚡ --%</span>
   <div class="spacer"></div>
   <a href="/" class="back-btn">← На главную</a>
 </header>
@@ -155,8 +156,24 @@
 
   function renderFileList(items){
     fileList.innerHTML = '';
+    if(currentPath){
+      const up = document.createElement('div');
+      up.className = 'file-item is-dir go-up';
+      up.innerHTML = '<span class="icon">⬆</span><span class="name">..</span><span class="size"></span>';
+      up.onclick = () => {
+        if(ed.isDirty()){
+          if(!confirm('Есть несохранённые изменения. Продолжить без сохранения?')) return;
+        }
+        const parent = currentPath.split('/').slice(0, -1).join('/');
+        loadDir(parent);
+      };
+      fileList.appendChild(up);
+    }
     if(items.length === 0){
-      fileList.innerHTML = '<div style="color:var(--dim);font-size:13px;padding:12px;text-align:center">Папка пуста</div>';
+      const msg = document.createElement('div');
+      msg.style.cssText = 'color:var(--dim);font-size:13px;padding:12px;text-align:center';
+      msg.textContent = 'Папка пуста';
+      fileList.appendChild(msg);
       return;
     }
     items.forEach(item => {
@@ -295,5 +312,6 @@
   loadDir('');
 })();
 </script>
+<script src="js/battery.js"></script>
 </body>
 </html>

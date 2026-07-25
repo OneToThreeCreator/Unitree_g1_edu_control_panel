@@ -15,6 +15,7 @@ main{flex:1;display:flex;gap:20px;padding:20px;overflow:hidden}
 .file-item .size{font-size:11px;color:var(--dim);flex-shrink:0;min-width:50px;text-align:right}
 .file-item.active .size{color:rgba(255,255,255,.7)}
 .file-item.is-dir .icon{color:var(--warn)}
+.file-item.go-up{opacity:.7;font-style:italic}
 .file-item.is-file .icon{color:var(--dim)}
 .sidebar-actions{display:flex;gap:6px;flex-wrap:wrap;padding-top:8px;border-top:1px solid var(--line)}
 .sidebar-actions button{flex:1;min-width:0;padding:6px 4px;font-size:11px;border:1px solid var(--line);border-radius:6px;background:var(--panel2);color:var(--txt);cursor:pointer;font:inherit;text-align:center}
