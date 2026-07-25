@@ -113,9 +113,9 @@ async def webrtc_offer(data: Dict[str, Any]):
         await _janus_client.create_session()
         await _janus_client.attach_plugin("janus.plugin.streaming")
 
-        # TODO: detect H.265 support from SDP, for now use mountpoint 1
-        mountpoint_id = 1
-        log.info("WebRTC: using mountpoint %d", mountpoint_id)
+        # Use mountpoint 2 (H.264) for now — H.265 WebRTC has poor browser support
+        mountpoint_id = 2
+        log.info("WebRTC: using mountpoint %d (H.264)", mountpoint_id)
 
         # Watch the mountpoint with SDP offer
         result = await _janus_client.watch(mountpoint_id=mountpoint_id, sdp=sdp)
