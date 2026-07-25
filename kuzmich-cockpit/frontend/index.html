@@ -499,14 +499,13 @@ function connectMjpeg() {
   ws.binaryType = "arraybuffer";
   const img = $("#feed");
 
-  let buf = "";
+  ws.onopen = () => console.log("[CAM] MJPEG WS connected");
   ws.onmessage = (e) => {
-    // GStreamer multipartmux sends JPEG frames as binary
     const bytes = new Uint8Array(e.data);
-    // Find JPEG markers: FF D8 (SOI) ... FF D9 (EOI)
+    console.log("[CAM] MJPEG frame received:", bytes.length, "bytes");
+    // GStreamer sends JPEG frames as binary — find SOI/EOI markers
     for (let i = 0; i < bytes.length - 1; i++) {
       if (bytes[i] === 0xFF && bytes[i + 1] === 0xD8) {
-        // Found JPEG start — collect until EOI
         let end = -1;
         for (let j = i + 2; j < bytes.length - 1; j++) {
           if (bytes[j] === 0xFF && bytes[j + 1] === 0xD9) {
