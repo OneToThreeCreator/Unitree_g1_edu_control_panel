@@ -239,7 +239,7 @@ class CameraManager:
         )
 
         cmd_color = ["gst-launch-1.0", "-e"] + color_pipeline.split(" ")
-        log.info("Starting GStreamer DRY_RUN: %s...", " ".join(cmd_color[:6]) + "...")
+        log.info("Starting GStreamer DRY_RUN: %s", " ".join(cmd_color))
         log.info("MJPEG will be on ws://0.0.0.0:%s", self._config.ws_raw_bgr_port)
 
         try:
