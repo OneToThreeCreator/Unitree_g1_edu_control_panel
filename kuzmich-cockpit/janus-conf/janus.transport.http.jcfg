@@ -1,0 +1,17 @@
+# HTTP transport
+general: {
+    json = "indented"
+    base_path = "/janus"
+    threads = "unlimited"
+    http = true
+    port = 8088
+    https = false
+}
+
+admin: {
+    admin_http = false
+}
+
+cors: {
+    allow_origin = "*"
+}

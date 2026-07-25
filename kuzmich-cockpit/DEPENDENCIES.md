@@ -18,6 +18,16 @@ sudo apt-get install -y python3 python3-pip python3-venv
 
 # Python packages (inside venv)
 pip install -r requirements.txt
+
+# Janus build dependencies
+sudo apt-get install -y \
+  libmicrohttpd-dev libjansson-dev libssl-dev \
+  libglib2.0-dev libopus-dev libogg-dev libcurl4-openssl-dev \
+  liblua5.3-dev libconfig-dev libnice-dev libwebsockets-dev \
+  gengetopt pkg-config cmake automake autoconf libtool
+
+# Build Janus
+bash scripts/build-janus.sh
 ```
 
 ### Key GStreamer plugins
@@ -54,6 +64,26 @@ sudo apt-get install -y janus
 | `omxh264enc` | OpenMAX H.264 — older JetPack |
 
 ## Janus Gateway
+
+Janus is built from source as a git submodule in `janus/`.
+
+### Build
+```bash
+bash scripts/build-janus.sh
+```
+
+### Start
+```bash
+bash scripts/start-janus.sh
+# Or manually:
+janus -o
+```
+
+### Config files
+- `janus-conf/janus.jcfg` — Main config
+- `janus-conf/janus.plugin.streaming.jcfg` — Streaming plugin (H.265/H.264 mountpoints)
+- `janus-conf/janus.transport.http.jcfg` — HTTP API
+- `janus-conf/janus.transport.websockets.jcfg` — WebSocket transport
 
 ```bash
 # Ubuntu/Debian

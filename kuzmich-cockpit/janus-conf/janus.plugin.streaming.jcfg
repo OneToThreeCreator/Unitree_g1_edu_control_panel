@@ -1,0 +1,32 @@
+# Streaming plugin config for Unitree G1 camera
+# Two mountpoints: H.265 (primary) and H.264 (fallback)
+
+general: {
+    admin_key = "janusadmin"
+    events = false
+}
+
+# H.265 stream
+h265-stream: {
+    type = "rtp"
+    id = 1
+    description = "Unitree G1 Camera H.265"
+    audio = false
+    video = true
+    videoport = 5004
+    videopt = 96
+    videortpmap = "H265/90000"
+}
+
+# H.264 stream
+h264-stream: {
+    type = "rtp"
+    id = 2
+    description = "Unitree G1 Camera H.264"
+    audio = false
+    video = true
+    videoport = 5006
+    videopt = 96
+    videortpmap = "H264/90000"
+    videofmtp = "profile-level-id=42e01f;packetization-mode=1"
+}
