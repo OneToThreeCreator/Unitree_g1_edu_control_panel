@@ -230,22 +230,22 @@ class CameraManager:
             f"! websocketsink host=0.0.0.0 port={self._config.ws_raw_bgr_port} "
             f"t. ! queue ! videoconvert ! video/x-raw,format=BGR "
             f"! websocketsink host=0.0.0.0 port={self._config.ws_raw_bgr_port + 2} "
-            f"t. ! queue leaky=downstream max-size-buffers=1 ! videoconvert ! video/x-raw,format=I420 "
+            f"t. ! queue ! videoconvert ! video/x-raw,format=I420 "
             f"! x265enc key-int-max=30 speed-preset=ultrafast ! h265parse ! rtph265pay config-interval=1 "
             f"! udpsink host=127.0.0.1 port={rtp_port} "
-            f"t. ! queue leaky=downstream max-size-buffers=1 ! videoconvert ! video/x-raw,format=I420 "
+            f"t. ! queue ! videoconvert ! video/x-raw,format=I420 "
             f"! x264enc tune=zerolatency speed-preset=ultrafast ! h264parse ! rtph264pay config-interval=1 "
             f"! udpsink host=127.0.0.1 port={rtp_h264_port}"
         )
 
-        cmd_color = ["gst-launch-1.0", "-e"] + color_pipeline.split(" ")
-        log.info("Starting GStreamer DRY_RUN: %s", " ".join(cmd_color))
+        cmd_str = f"gst-launch-1.0 -e {color_pipeline}"
+        log.info("Starting GStreamer DRY_RUN: %s", cmd_str)
         log.info("MJPEG will be on ws://0.0.0.0:%s", self._config.ws_raw_bgr_port)
 
         try:
             self._gst_process = subprocess.Popen(
-                cmd_color, env=gst_env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
-                preexec_fn=lambda: signal.signal(signal.SIGINT, signal.SIG_IGN),
+                cmd_str, shell=True, env=gst_env,
+                stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
             )
             self._log_gst_stderr(self._gst_process)
             log.info("GStreamer DRY_RUN started (pid=%s)", self._gst_process.pid)
