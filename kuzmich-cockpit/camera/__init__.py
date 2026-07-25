@@ -159,17 +159,17 @@ async def webrtc_answer(data: Dict[str, Any]):
     sdp = sdp.replace("a=setup:actpass", "a=setup:active")
 
     try:
-        # Step 1: Start with SDP answer in JSEP
-        await _janus_client.start(sdp)
-        log.info("WebRTC stream started")
-
-        # Step 2: Flush buffered ICE candidates
+        # Step 1: Flush buffered ICE candidates BEFORE start
         for c in _pending_ice:
             try:
                 await _janus_client.trickle_ice(c)
             except Exception:
                 pass
         _pending_ice = []
+
+        # Step 2: Start with SDP answer in JSEP
+        await _janus_client.start(sdp)
+        log.info("WebRTC stream started")
 
         return {"status": "ok"}
     except Exception as e:
