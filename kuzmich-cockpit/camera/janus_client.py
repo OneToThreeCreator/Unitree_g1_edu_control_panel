@@ -1,18 +1,14 @@
-"""Async Janus Gateway client for Streaming plugin.
+"""Async Janus Gateway client using WebSocket transport.
 
-Handles session/attach/watch operations via Janus HTTP long-poll API.
-Used to bridge GStreamer RTP output to browser WebRTC viewers.
-
-Flow:
-1. GStreamer sends RTP to Janus on configured ports
-2. Browser creates RTCPeerConnection, sends SDP offer
-3. Backend forwards offer to Janus via Streaming plugin "watch"
-4. Janus returns SDP answer, backend returns to browser
-5. WebRTC stream flows from Janus to browser
+Flow for Streaming plugin:
+1. watch → Janus returns SDP offer in async event
+2. start with JSEP answer → Janus starts relaying
+3. trickle ICE candidates separately
 """
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import uuid
 from typing import Any, Dict, Optional
@@ -23,8 +19,6 @@ log = logging.getLogger("cockpit.camera.janus")
 
 
 class JanusError(Exception):
-    """Janus API error."""
-
     def __init__(self, code: int = 0, reason: str = ""):
         self.code = code
         self.reason = reason
@@ -32,190 +26,175 @@ class JanusError(Exception):
 
 
 class JanusClient:
-    """Async client for Janus Gateway Streaming plugin."""
+    """Async client for Janus Gateway Streaming plugin via WebSocket."""
 
-    def __init__(self, base_url: str = "http://127.0.0.1:8088") -> None:
-        self._base_url = base_url.rstrip("/")
+    def __init__(self, ws_url: str = "ws://127.0.0.1:8188/janus") -> None:
+        self._ws_url = ws_url
         self._session_id: Optional[int] = None
         self._handle_id: Optional[int] = None
-        self._plugin: str = "janus.plugin.streaming"
+        self._ws: Optional[aiohttp.ClientWebSocketResponse] = None
         self._session: Optional[aiohttp.ClientSession] = None
-        self._mountpoint_id: int = 1  # Default mountpoint
+        self._pending_events: asyncio.Queue = asyncio.Queue()
 
     @property
     def session_id(self) -> Optional[int]:
         return self._session_id
 
-    async def _get_session(self) -> aiohttp.ClientSession:
-        if self._session is None or self._session.closed:
-            self._session = aiohttp.ClientSession(
-                timeout=aiohttp.ClientTimeout(total=10)
-            )
-        return self._session
-
     async def close(self) -> None:
+        if self._ws and not self._ws.closed:
+            await self._ws.close()
         if self._session and not self._session.closed:
             await self._session.close()
-            self._session = None
+        self._ws = None
+        self._session = None
 
     def _transaction(self) -> str:
         return uuid.uuid4().hex[:12]
 
-    async def create_session(self) -> int:
-        """Create Janus session."""
-        session = await self._get_session()
-        txn = self._transaction()
+    async def connect(self) -> None:
+        """Connect to Janus via WebSocket."""
+        self._session = aiohttp.ClientSession()
+        self._ws = await self._session.ws_connect(self._ws_url)
+        log.info("Connected to Janus WebSocket: %s", self._ws_url)
 
-        payload = {"transaction": txn, "janus": "create"}
-        url = f"{self._base_url}/janus"
-        async with session.post(url, json=payload) as resp:
-            data = await resp.json()
-            if data.get("janus") == "error":
-                err = data.get("error", {})
-                raise JanusError(err.get("code", -1), err.get("reason", "unknown"))
-            self._session_id = data["data"]["id"]
-            log.info("Janus session created: %s", self._session_id)
-            return self._session_id
+    async def _send_and_wait(self, payload: Dict[str, Any], timeout: float = 10) -> Dict[str, Any]:
+        """Send message and wait for response matching transaction."""
+        if not self._ws or self._ws.closed:
+            raise JanusError(-1, "Not connected to Janus")
 
-    async def attach_plugin(self, plugin: str = "janus.plugin.streaming") -> int:
-        """Attach to Janus plugin."""
-        if not self._session_id:
-            raise JanusError(-1, "No session — call create_session first")
+        txn = payload.get("transaction", self._transaction())
+        payload["transaction"] = txn
 
-        self._plugin = plugin
-        session = await self._get_session()
-        txn = self._transaction()
+        await self._ws.send_json(payload)
 
-        payload = {
-            "transaction": txn,
-            "session_id": self._session_id,
-            "janus": "attach",
-            "plugin": plugin,
-        }
-        url = f"{self._base_url}/janus/{self._session_id}"
-        async with session.post(url, json=payload) as resp:
-            data = await resp.json()
-            if data.get("janus") == "error":
-                err = data.get("error", {})
-                raise JanusError(err.get("code", -1), err.get("reason", "unknown"))
-            self._handle_id = data["data"]["id"]
-            log.info("Janus plugin attached: handle=%s", self._handle_id)
-            return self._handle_id
-
-    async def watch(self, mountpoint_id: int = 1, sdp: str = "") -> Dict[str, Any]:
-        """Watch a streaming mountpoint (subscriber flow).
-
-        Sends SDP offer to Janus, polls for SDP answer.
-        """
-        if not self._handle_id:
-            raise JanusError(-1, "No handle — call attach_plugin first")
-
-        body: Dict[str, Any] = {
-            "request": "watch",
-            "id": mountpoint_id,
-        }
-        if sdp:
-            body["offer"] = {"type": "offer", "sdp": sdp}
-
-        session = await self._get_session()
-        txn = self._transaction()
-
-        payload = {
-            "transaction": txn,
-            "session_id": self._session_id,
-            "handle_id": self._handle_id,
-            "janus": "message",
-            "body": body,
-        }
-        url = f"{self._base_url}/janus/{self._session_id}/{self._handle_id}"
-        async with session.post(url, json=payload) as resp:
-            data = await resp.json()
-            if data.get("janus") == "error":
-                err = data.get("error", {})
-                raise JanusError(err.get("code", -1), err.get("reason", "unknown"))
-            # Janus returns ack immediately, SDP answer comes via event
-            # Poll for the event
-            return await self._poll_for_event(session, timeout=5)
-
-    async def _poll_for_event(self, session: aiohttp.ClientSession, timeout: float = 5) -> Dict[str, Any]:
-        """Poll Janus long-poll endpoint for events."""
+        # Wait for response with matching transaction
         import time
-        url = f"{self._base_url}/janus/{self._session_id}"
         deadline = time.time() + timeout
         while time.time() < deadline:
             try:
-                async with session.get(url) as resp:
-                    data = await resp.json()
-                    janus_type = data.get("janus")
-                    if janus_type == "event":
+                msg = await asyncio.wait_for(self._ws.receive(), timeout=1.0)
+                if msg.type == aiohttp.WSMsgType.TEXT:
+                    data = json.loads(msg.data)
+                    if data.get("transaction") == txn:
+                        if data.get("janus") == "error":
+                            err = data.get("error", {})
+                            raise JanusError(err.get("code", -1), err.get("reason", "unknown"))
                         return data
-                    elif janus_type == "ack":
-                        continue
-                    elif janus_type == "error":
-                        raise JanusError(data.get("error", {}).get("code", -1), data.get("error", {}).get("reason", "unknown"))
+                    # Store other messages (events) for later pickup
+                    await self._pending_events.put(data)
+                elif msg.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
+                    raise JanusError(-1, "WebSocket closed")
             except asyncio.TimeoutError:
-                break
-            await asyncio.sleep(0.1)
-        raise JanusError(-1, "Timeout waiting for Janus event")
+                continue
 
-    async def start(self, mountpoint_id: int = 1) -> Dict[str, Any]:
-        """Start receiving media after watch."""
-        if not self._handle_id:
-            raise JanusError(-1, "No handle — call attach_plugin first")
+        raise JanusError(-1, f"Timeout waiting for response to {payload.get('janus')}")
 
-        body: Dict[str, Any] = {
-            "request": "start",
-        }
+    async def _poll_event(self, timeout: float = 5) -> Optional[Dict[str, Any]]:
+        """Poll for async events from Janus."""
+        import time
+        deadline = time.time() + timeout
 
-        session = await self._get_session()
-        txn = self._transaction()
+        # First check queued events
+        while not self._pending_events.empty():
+            event = self._pending_events.get_nowait()
+            if event.get("janus") == "event":
+                return event
 
-        payload = {
-            "transaction": txn,
+        # Then wait for new messages
+        while time.time() < deadline:
+            try:
+                msg = await asyncio.wait_for(self._ws.receive(), timeout=1.0)
+                if msg.type == aiohttp.WSMsgType.TEXT:
+                    data = json.loads(msg.data)
+                    if data.get("janus") == "event":
+                        return data
+                    # Queue non-event messages
+                    await self._pending_events.put(data)
+                elif msg.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
+                    return None
+            except asyncio.TimeoutError:
+                continue
+
+        return None
+
+    async def create_session(self) -> int:
+        result = await self._send_and_wait({"janus": "create"})
+        self._session_id = result["data"]["id"]
+        log.info("Janus session created: %s", self._session_id)
+        return self._session_id
+
+    async def attach_plugin(self, plugin: str = "janus.plugin.streaming") -> int:
+        if not self._session_id:
+            raise JanusError(-1, "No session")
+
+        result = await self._send_and_wait({
+            "janus": "attach",
+            "session_id": self._session_id,
+            "plugin": plugin,
+        })
+        self._handle_id = result["data"]["id"]
+        log.info("Attached to %s: handle=%s", plugin, self._handle_id)
+        return self._handle_id
+
+    async def watch(self, mountpoint_id: int = 1) -> Dict[str, Any]:
+        """Watch a mountpoint. Returns SDP offer in async event."""
+        # Send watch
+        result = await self._send_and_wait({
+            "janus": "message",
             "session_id": self._session_id,
             "handle_id": self._handle_id,
+            "body": {"request": "watch", "id": mountpoint_id},
+        })
+        log.info("Watch sent, waiting for SDP offer event...")
+
+        # Wait for async event with SDP offer
+        event = await self._poll_event(timeout=10)
+        if not event:
+            raise JanusError(-1, "No event received after watch")
+
+        jsep = event.get("jsep")
+        if not jsep or not jsep.get("sdp"):
+            raise JanusError(-1, f"No SDP in event: {event}")
+
+        log.info("Got SDP offer from Janus")
+        return event
+
+    async def start(self, sdp: str) -> Dict[str, Any]:
+        """Start stream with SDP answer in JSEP."""
+        result = await self._send_and_wait({
             "janus": "message",
-            "body": body,
-        }
-        url = f"{self._base_url}/janus/{self._session_id}/{self._handle_id}"
-        async with session.post(url, json=payload) as resp:
-            data = await resp.json()
-            return data
+            "session_id": self._session_id,
+            "handle_id": self._handle_id,
+            "body": {"request": "start"},
+            "jsep": {"type": "answer", "sdp": sdp},
+        })
+        log.info("Start sent, waiting for starting event...")
+
+        # Wait for async "starting" event
+        event = await self._poll_event(timeout=5)
+        if event:
+            status = event.get("plugindata", {}).get("data", {}).get("status")
+            log.info("Stream status: %s", status)
+
+        return result
 
     async def trickle_ice(self, candidate: Dict[str, Any]) -> Dict[str, Any]:
-        """Send ICE candidate to Janus."""
-        if not self._handle_id:
-            raise JanusError(-1, "No handle — call attach_plugin first")
-
-        session = await self._get_session()
-        txn = self._transaction()
-
-        payload = {
-            "transaction": txn,
+        """Send ICE candidate."""
+        return await self._send_and_wait({
+            "janus": "trickle",
             "session_id": self._session_id,
             "handle_id": self._handle_id,
-            "janus": "trickle",
             "candidate": candidate,
-        }
-        url = f"{self._base_url}/janus/{self._session_id}/{self._handle_id}"
-        async with session.post(url, json=payload) as resp:
-            data = await resp.json()
-            return data
+        }, timeout=3)
 
     async def destroy_session(self) -> None:
-        """Destroy Janus session."""
         if not self._session_id:
             return
-        session = await self._get_session()
-        txn = self._transaction()
-        payload = {
-            "transaction": txn,
-            "janus": "destroy",
-            "session_id": self._session_id,
-        }
-        url = f"{self._base_url}/janus"
         try:
-            await session.post(url, json=payload)
+            await self._send_and_wait({
+                "janus": "destroy",
+                "session_id": self._session_id,
+            }, timeout=3)
         except Exception:
             pass
         self._session_id = None

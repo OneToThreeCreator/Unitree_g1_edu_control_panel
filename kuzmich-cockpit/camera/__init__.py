@@ -27,8 +27,8 @@ _webrtc_sessions: Dict[int, JanusClient] = {}  # handle_id → client
 def init_camera(config: CameraConfig, teleop_bridge: object = None) -> None:
     global _camera_manager, _janus_client
     _camera_manager = CameraManager(config, teleop_bridge=teleop_bridge)
-    _janus_client = JanusClient(config.janus_http_url)
-    log.info("Camera module initialized (Janus: %s)", config.janus_http_url)
+    _janus_client = JanusClient(config.janus_ws_url)
+    log.info("Camera module initialized (Janus WS: %s)", config.janus_ws_url)
 
 
 def get_camera_manager() -> Optional[CameraManager]:
@@ -93,18 +93,15 @@ async def webrtc_offer(data: Dict[str, Any]):
 
     Flow:
     1. Browser sends SDP offer
-    2. Backend creates Janus session, attaches to Streaming plugin
-    3. Sends "watch" with SDP offer to Janus
-    4. Janus returns SDP offer (in jsep)
-    5. Returns offer to browser
-    6. Browser creates answer, sends back
-    7. Backend sends answer via trickle to Janus
-    8. Backend calls start
+    2. Backend connects to Janus via WebSocket, creates session, attaches plugin
+    3. Sends "watch" — Janus returns SDP offer in async event
+    4. Returns offer to browser
+    5. Browser creates answer, sends back via /answer endpoint
     """
     global _pending_ice
     _pending_ice = []
 
-    if _camera_manager is None or _janus_client is None:
+    if _camera_manager is None:
         raise HTTPException(503, "Camera module not initialized")
 
     sdp = data.get("sdp")
@@ -113,36 +110,34 @@ async def webrtc_offer(data: Dict[str, Any]):
         raise HTTPException(400, "Expected SDP offer with type='offer'")
 
     try:
-        # Create fresh session for each viewer
-        await _janus_client.close()
-        _janus_client.__init__(_camera_manager.config.janus_http_url)
+        # Create new client for each viewer
+        global _janus_client
+        if _janus_client:
+            await _janus_client.close()
+        _janus_client = JanusClient(_camera_manager.config.janus_ws_url)
 
+        await _janus_client.connect()
         await _janus_client.create_session()
         await _janus_client.attach_plugin("janus.plugin.streaming")
 
         # Detect H.265 support from browser SDP offer
         has_h265 = "H265" in sdp.upper() or "HEVC" in sdp.upper()
         mountpoint_id = 1 if has_h265 else 2  # 1=H.265, 2=H.264
-        log.info("WebRTC: browser %s, using mountpoint %d", "H.265" if has_h265 else "H.264", mountpoint_id)
+        log.info("WebRTC: browser %s, mountpoint %d", "H.265" if has_h265 else "H.264", mountpoint_id)
 
-        # Watch the mountpoint with SDP offer
-        result = await _janus_client.watch(mountpoint_id=mountpoint_id, sdp=sdp)
+        # Watch — Janus returns SDP offer in async event
+        event = await _janus_client.watch(mountpoint_id=mountpoint_id)
 
-        # Janus Streaming returns SDP offer in jsep
-        jsep = result.get("jsep", {})
+        jsep = event.get("jsep", {})
         janus_sdp = jsep.get("sdp")
+        if not janus_sdp:
+            raise HTTPException(502, "Janus did not return SDP offer")
 
-        if janus_sdp:
-            log.info("Janus SDP offer received, returning to browser")
-            return {"type": "offer", "sdp": janus_sdp}
-
-        plugindata = result.get("plugindata", {})
-        data_response = plugindata.get("data", {})
-        log.warning("Unexpected Janus response: status=%s", data_response.get("status"))
-        raise HTTPException(502, "Janus did not return SDP")
+        log.info("Returning Janus SDP offer to browser")
+        return {"type": "offer", "sdp": janus_sdp}
 
     except Exception as e:
-        log.error("WebRTC signaling failed: %s", e)
+        log.error("WebRTC offer failed: %s", e)
         if isinstance(e, HTTPException):
             raise
         raise HTTPException(502, f"WebRTC signaling error: {e}")
@@ -150,10 +145,10 @@ async def webrtc_offer(data: Dict[str, Any]):
 
 @router.post("/webrtc/answer")
 async def webrtc_answer(data: Dict[str, Any]):
-    """Receive browser SDP answer, forward to Janus via trickle, then start stream."""
+    """Receive browser SDP answer, send start with JSEP, then flush ICE."""
     global _pending_ice
     if _janus_client is None:
-        raise HTTPException(503, "Camera module not initialized")
+        raise HTTPException(503, "No active Janus session")
 
     sdp = data.get("sdp")
     sdp_type = data.get("type")
@@ -161,37 +156,14 @@ async def webrtc_answer(data: Dict[str, Any]):
         raise HTTPException(400, "Expected SDP answer with type='answer'")
 
     try:
-        session = await _janus_client._get_session()
-        url = f"{_janus_client._base_url}/janus/{_janus_client._session_id}/{_janus_client._handle_id}"
+        # Step 1: Start with SDP answer in JSEP
+        await _janus_client.start(sdp)
+        log.info("WebRTC stream started")
 
-        # Step 1: Send start with SDP answer in jsep FIRST
-        log.info("SDP answer length: %d", len(sdp))
-        start_payload = {
-            "transaction": _janus_client._transaction(),
-            "session_id": _janus_client._session_id,
-            "handle_id": _janus_client._handle_id,
-            "janus": "message",
-            "body": {"request": "start"},
-            "jsep": {"type": "answer", "sdp": sdp}
-        }
-        async with session.post(url, json=start_payload) as resp:
-            result = await resp.json()
-            log.info("Start with answer: %s", result.get("janus"))
-            if result.get("plugindata"):
-                log.info("Plugin response: %s", result["plugindata"].get("data"))
-
-        # Step 2: Then flush ICE candidates via trickle
+        # Step 2: Flush buffered ICE candidates
         for c in _pending_ice:
             try:
-                ice_payload = {
-                    "transaction": _janus_client._transaction(),
-                    "session_id": _janus_client._session_id,
-                    "handle_id": _janus_client._handle_id,
-                    "janus": "trickle",
-                    "candidate": c
-                }
-                async with session.post(url, json=ice_payload) as resp:
-                    pass
+                await _janus_client.trickle_ice(c)
             except Exception:
                 pass
         _pending_ice = []
