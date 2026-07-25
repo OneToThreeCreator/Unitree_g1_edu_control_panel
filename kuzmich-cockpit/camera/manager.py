@@ -218,8 +218,6 @@ class CameraManager:
         gst_env["GST_PLUGIN_PATH"] = ws_bin
 
         # DRY_RUN pipeline: videotestsrc → tee → MJPEG / raw BGR
-        # No RTP in DRY_RUN — software x265/x264 from Python subprocess causes issues.
-        # RTP branches are in LOCAL and RELAY pipelines (Jetson with hardware encoders).
         color_pipeline = (
             f"videotestsrc is-live=true ! "
             f"videoconvert ! video/x-raw,format=BGR,width={w},height={h},framerate={fps}/1 ! "
