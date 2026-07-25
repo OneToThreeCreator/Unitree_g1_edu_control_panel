@@ -170,11 +170,14 @@ async def webrtc_hangup():
 
 @router.websocket("/ws/mjpeg")
 async def ws_mjpeg_proxy(ws: WebSocket):
-    """Proxy MJPEG from GStreamer websocketsink:8084 to browser."""
+    """Proxy MJPEG from GStreamer websocketsink to browser."""
     await ws.accept()
+    gst_port = _camera_manager.config.ws_raw_bgr_port
+    log.info("MJPEG proxy: connecting to GStreamer ws://127.0.0.1:%s", gst_port)
     try:
         import websockets
-        async with websockets.connect(f"ws://127.0.0.1:{_camera_manager.config.ws_raw_bgr_port}") as gst_ws:
+        async with websockets.connect(f"ws://127.0.0.1:{gst_port}") as gst_ws:
+            log.info("MJPEG proxy: connected to GStreamer")
             async for msg in gst_ws:
                 if isinstance(msg, bytes):
                     await ws.send_bytes(msg)
