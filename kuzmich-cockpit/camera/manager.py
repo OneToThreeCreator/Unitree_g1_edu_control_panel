@@ -104,6 +104,15 @@ class CameraManager:
         self._state = CameraState.DISABLED
         log.info("Camera stopped → DISABLED")
 
+    async def pause(self) -> None:
+        """Stop proxy without killing GStreamer — pipeline stalls via backpressure."""
+        if self._poll_task:
+            self._poll_task.cancel()
+            self._poll_task = None
+
+        self._state = CameraState.DISABLED
+        log.info("Camera paused → DISABLED (GStreamer alive)")
+
     async def shutdown(self) -> None:
         await self.stop()
         self._state = CameraState.STOPPED

@@ -11,6 +11,7 @@
 <header>
   <h1>🤖 КУЗЬМИЧ</h1>
   <span class="badge"><span id="conn" class="dot"></span> <span id="connt">нет связи</span></span>
+  <span id="batt" class="badge batt">⚡ --%</span>
   <span id="dry" class="badge dry" style="display:none">DRY-RUN (без робота)</span>
   <a href="/prompts.html" class="back-btn" style="margin-left:10px">Промты ИИ</a>
   <a href="/config.html" class="back-btn">Конфигурация ИИ</a>
@@ -153,6 +154,7 @@
 
 <script src="js/base.js"></script>
 <script src="js/api.js"></script>
+<script src="js/battery.js"></script>
 <script>
 'use strict';
 let ws=null, cfg=null, mode="manual", estop=false, aiMode="off", companionConfig=null, lastAiMode="internal";
@@ -168,10 +170,18 @@ function connect(){
 function send(o){ if(ws&&ws.readyState===1) ws.send(JSON.stringify(o)); }
 function setConn(on){ $("#conn").classList.toggle("on",on); $("#connt").textContent=on?"на связи":"нет связи"; }
 
+function updateBattery(b){
+  const el = $("#batt");
+  const soc = b.soc;
+  if(soc === null || soc === undefined) { el.textContent = "⚡ --%"; el.className = "badge batt"; return; }
+  el.textContent = "⚡ " + soc + "%";
+  el.className = "badge batt" + (soc > 50 ? " high" : soc > 20 ? " mid" : " low");
+}
+
 function handle(m){
-  if(m.t==="hello"){ applyState(m); $("#dry").style.display=m.dry_run?"":"none"; if(m.companion) applyCompanion(m.companion); }
+  if(m.t==="hello"){ applyState(m); $("#dry").style.display=m.dry_run?"":"none"; if(m.companion) applyCompanion(m.companion); if(m.battery) updateBattery(m.battery); }
   else if(m.t==="telemetry"){ applyState(m); $("#tvx").textContent=m.move.vx.toFixed(2);
-    $("#tvy").textContent=m.move.vy.toFixed(2); $("#twz").textContent=m.move.wz.toFixed(2); if(m.companion) applyCompanion(m.companion); }
+    $("#tvy").textContent=m.move.vy.toFixed(2); $("#twz").textContent=m.move.wz.toFixed(2); if(m.companion) applyCompanion(m.companion); if(m.battery) updateBattery(m.battery); }
   else if(m.t==="event"){ logEvent(m); }
   else if(m.t==="ai_reply"){ addMsg("bot",m.text); }
 }
@@ -373,7 +383,7 @@ $("#aiText").addEventListener("keydown",e=>{if(e.key==="Enter")askAI();});
 function addMsg(who,text){ const d=document.createElement("div"); d.className="msg "+who; d.textContent=text; $("#chat").appendChild(d); $("#chat").scrollTop=1e9; }
 
 // -------- Видео --------
-let camActive = false, camPeer = null, camServerActive = false;
+let camActive = false, camPeer = null, camWs = null, camServerActive = false;
 
 function updateCamStatus(status) {
   const el = $("#camStatus");
@@ -406,6 +416,7 @@ function updateCamToggleState() {
 }
 
 function disconnectVideo() {
+  if (camWs) { try { camWs.close(); } catch(e){} camWs = null; }
   if (camPeer) { try { camPeer.close(); } catch(e){} camPeer = null; }
   const v = $("#feedVideo"), img = $("#feed"), ph = $("#feedph");
   if (v) { v.style.display = "none"; v.srcObject = null; }
@@ -471,6 +482,7 @@ function connectMjpeg() {
   // Connect via FastAPI proxy (port 8080) to avoid CSP cross-origin issues
   const proto = location.protocol === "https:" ? "wss" : "ws";
   const ws = new WebSocket(`${proto}://${location.host}/api/camera/ws/mjpeg`);
+  camWs = ws;
   ws.binaryType = "arraybuffer";
   const img = $("#feed");
 

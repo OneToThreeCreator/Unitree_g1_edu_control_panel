@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, HTTPException, Response
+from fastapi import APIRouter, HTTPException, Response, WebSocket
 
 from .config import CameraConfig
 from .manager import CameraManager
@@ -55,7 +55,7 @@ async def camera_start():
 async def camera_stop():
     if _camera_manager is None:
         raise HTTPException(503, "Camera module not initialized")
-    await _camera_manager.stop()
+    await _camera_manager.pause()
     return {"status": "stopped", **_camera_manager.status()}
 
 
@@ -101,12 +101,13 @@ async def ws_mjpeg_proxy(ws: WebSocket):
     await ws.accept()
     try:
         import websockets
-        async with websockets.connect(f"ws://127.0.0.1:{_camera_manager.config.ws_raw_bgr_port + 2}") as gst_ws:
+        async with websockets.connect(f"ws://127.0.0.1:{_camera_manager.config.ws_raw_bgr_port}") as gst_ws:
             async for msg in gst_ws:
                 if isinstance(msg, bytes):
                     await ws.send_bytes(msg)
     except Exception as e:
-        log.warning("MJPEG proxy error: %s", e)
+        if "1005" not in str(e):
+            log.warning("MJPEG proxy error: %s", e)
         try:
             await ws.close()
         except Exception:
@@ -124,7 +125,8 @@ async def ws_raw_proxy(ws: WebSocket):
                 if isinstance(msg, bytes):
                     await ws.send_bytes(msg)
     except Exception as e:
-        log.warning("Raw BGR proxy error: %s", e)
+        if "1005" not in str(e):
+            log.warning("Raw BGR proxy error: %s", e)
         try:
             await ws.close()
         except Exception:
@@ -142,7 +144,8 @@ async def ws_depth_proxy(ws: WebSocket):
                 if isinstance(msg, bytes):
                     await ws.send_bytes(msg)
     except Exception as e:
-        log.warning("Depth proxy error: %s", e)
+        if "1005" not in str(e):
+            log.warning("Depth proxy error: %s", e)
         try:
             await ws.close()
         except Exception:
