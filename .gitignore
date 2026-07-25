@@ -54,3 +54,12 @@ kuzmich-cockpit/ai/vllm_models/*
 node_modules/
 .next/
 out/
+
+# Backend
+kuzmich-cockpit/backend/__pycache__/
+kuzmich-cockpit/backend/*.pyc
+kuzmich-cockpit/backend/*.pyo
+kuzmich-cockpit/backend/*.pyd
+kuzmich-cockpit/backend/.Python
+kuzmich-cockpit/backend/*.so
+kuzmich-cockpit/backend/.*
