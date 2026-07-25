@@ -229,9 +229,13 @@ class CameraManager:
             f"! websocketsink host=0.0.0.0 port={self._config.ws_raw_bgr_port} "
             f"t. ! queue ! videoconvert ! video/x-raw,format=BGR "
             f"! websocketsink host=0.0.0.0 port={self._config.ws_raw_bgr_port + 2} "
-            f"t. ! queue ! videoconvert ! x265enc key-int-max=30 speed-preset=ultrafast ! h265parse ! rtph265pay config-interval=1 "
+            f"t. ! queue ! videoconvert ! video/x-raw,format=I420 "
+            f"! x265enc key-int-max=30 speed-preset=ultrafast "
+            f"! h265parse ! rtph265pay config-interval=1 "
             f"! udpsink host=127.0.0.1 port={rtp_port} "
-            f"t. ! queue ! videoconvert ! x264enc tune=zerolatency speed-preset=ultrafast ! h264parse ! rtph264pay config-interval=1 "
+            f"t. ! queue ! videoconvert ! video/x-raw,format=I420 "
+            f"! x264enc tune=zerolatency speed-preset=ultrafast "
+            f"! h264parse ! rtph264pay config-interval=1 "
             f"! udpsink host=127.0.0.1 port={rtp_h264_port}"
         )
 
