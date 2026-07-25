@@ -50,16 +50,9 @@ make -j$(nproc)
 echo "Installing..."
 sudo make install
 
-# Install our minimal configs
-echo "Installing Unitree G1 configs..."
-sudo mkdir -p /etc/janus
-sudo cp "$JANUS_CONF_SRC/janus.jcfg" /etc/janus/
-sudo cp "$JANUS_CONF_SRC/janus.plugin.streaming.jcfg" /etc/janus/
-sudo cp "$JANUS_CONF_SRC/janus.transport.http.jcfg" /etc/janus/
-sudo cp "$JANUS_CONF_SRC/janus.transport.websockets.jcfg" /etc/janus/
-
 echo ""
 echo "=== Janus 1.4.1 installed ==="
 echo "Binary: /usr/local/bin/janus"
-echo "Configs: /etc/janus/"
-echo "Start: janus -o"
+echo "Configs: $JANUS_CONF_SRC/"
+echo ""
+echo "To start: janus -F $JANUS_CONF_SRC -o"
