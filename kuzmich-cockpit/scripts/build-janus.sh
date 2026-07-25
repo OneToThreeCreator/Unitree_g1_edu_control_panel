@@ -19,14 +19,20 @@ sudo apt-get install -y \
     libsrtp2-dev \
     gengetopt pkg-config cmake automake autoconf libtool
 
-# Run autogen.sh in source directory
-echo "Running autogen.sh..."
+# Remove old build artifacts
+echo "Cleaning old build..."
 cd "$JANUS_SRC"
+make clean 2>/dev/null || true
+make distclean 2>/dev/null || true
+
+# Run autogen.sh
+echo "Running autogen.sh..."
 ./autogen.sh
 
 # Configure with minimal plugins
 echo "Configuring Janus..."
 ./configure \
+    --prefix=/usr/local \
     --enable-websockets \
     --enable-rest \
     --disable-rabbitmq \
@@ -53,9 +59,13 @@ make -j$(nproc)
 echo "Installing..."
 sudo make install
 
+# Verify installation
+echo ""
+echo "=== Verifying installation ==="
+echo "Binary: $(which janus)"
+echo "Plugins: $(ls /usr/local/lib/janus/plugins/*.so 2>/dev/null | wc -l) .so files"
+echo "Transports: $(ls /usr/local/lib/janus/transports/*.so 2>/dev/null | wc -l) .so files"
+
 echo ""
 echo "=== Janus 1.4.1 installed ==="
-echo "Binary: /usr/local/bin/janus"
-echo "Configs: $JANUS_CONF_SRC/"
-echo ""
-echo "To start: janus -F $JANUS_CONF_SRC -o"
+echo "Start: janus -F $JANUS_CONF_SRC -P /usr/local/lib/janus/plugins"
