@@ -217,7 +217,9 @@ class CameraManager:
         ws_bin = os.path.join(os.path.dirname(os.path.dirname(__file__)), "gstwebsocketsink-bin")
         gst_env["GST_PLUGIN_PATH"] = ws_bin
 
-        # DRY_RUN pipeline: videotestsrc → tee → MJPEG / raw BGR
+        # DRY_RUN pipeline: videotestsrc → tee → MJPEG / raw BGR / RTP H.265+H.264
+        rtp_port = self._config.janus_rtp_h265_port
+        rtp_h264_port = self._config.janus_rtp_h264_port
         color_pipeline = (
             f"videotestsrc is-live=true ! "
             f"videoconvert ! video/x-raw,format=BGR,width={w},height={h},framerate={fps}/1 ! "
@@ -225,7 +227,13 @@ class CameraManager:
             f"t. ! queue ! jpegenc quality=80 "
             f"! websocketsink host=0.0.0.0 port={self._config.ws_raw_bgr_port} "
             f"t. ! queue ! videoconvert ! video/x-raw,format=BGR "
-            f"! websocketsink host=0.0.0.0 port={self._config.ws_raw_bgr_port + 2}"
+            f"! websocketsink host=0.0.0.0 port={self._config.ws_raw_bgr_port + 2} "
+            f"t. ! queue ! videoconvert ! video/x-raw,format=I420 "
+            f"! x265enc key-int-max=30 speed-preset=ultrafast ! h265parse ! rtph265pay config-interval=1 "
+            f"! udpsink host=127.0.0.1 port={rtp_port} "
+            f"t. ! queue ! videoconvert ! video/x-raw,format=I420 "
+            f"! x264enc tune=zerolatency speed-preset=ultrafast ! h264parse ! rtph264pay config-interval=1 "
+            f"! udpsink host=127.0.0.1 port={rtp_h264_port}"
         )
 
         cmd_color = ["gst-launch-1.0", "-e"] + color_pipeline.split(" ")
