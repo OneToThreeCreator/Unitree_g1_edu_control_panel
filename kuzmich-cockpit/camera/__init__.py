@@ -82,15 +82,19 @@ async def camera_snapshot():
 # Python proxies WebSocket data from GStreamer to clients on port 8080.
 
 
-# --- WebRTC signaling (Janus SFU) ---
+# --- WebRTC signaling (Janus Streaming plugin) ---
 
 
 @router.post("/webrtc/offer")
 async def webrtc_offer(data: Dict[str, Any]):
-    """WebRTC SDP offer/answer exchange via Janus VideoRoom.
+    """WebRTC SDP offer/answer exchange via Janus Streaming plugin.
 
-    Browser sends SDP offer, we forward to Janus which handles
-    ICE/DTLS and returns SDP answer.
+    Flow:
+    1. Browser sends SDP offer
+    2. Backend creates Janus session, attaches to Streaming plugin
+    3. Sends "watch" with SDP offer to Janus
+    4. Janus returns SDP answer
+    5. Returns answer to browser
     """
     if _camera_manager is None or _janus_client is None:
         raise HTTPException(503, "Camera module not initialized")
@@ -101,29 +105,30 @@ async def webrtc_offer(data: Dict[str, Any]):
         raise HTTPException(400, "Expected SDP offer with type='offer'")
 
     try:
-        # Ensure Janus session exists
-        if _janus_client.session_id is None:
-            await _janus_client.create_session()
-            await _janus_client.attach_plugin()
+        # Create fresh session for each viewer
+        await _janus_client.close()
+        _janus_client.__init__(_camera_manager.config.janus_http_url)
 
-        # Join room as publisher if not already
-        room_id = _camera_manager.config.janus_room_id
-        await _janus_client.join_room(room_id, publisher=True)
-        await _janus_client.configure_publisher(video=True)
+        await _janus_client.create_session()
+        await _janus_client.attach_plugin("janus.plugin.streaming")
 
-        # Publish the SDP offer to Janus
-        result = await _janus_client.publish(sdp, room_id)
+        # Watch the mountpoint with SDP offer
+        mountpoint_id = _camera_manager.config.janus_room_id
+        result = await _janus_client.watch(mountpoint_id=mountpoint_id, sdp=sdp)
 
-        # Extract SDP answer from Janus response
+        # Janus may return the answer asynchronously via events
+        # For synchronous flow, check the response directly
         plugindata = result.get("plugindata", {})
         data_response = plugindata.get("data", {})
         answer_sdp = data_response.get("sdp")
 
-        if not answer_sdp:
-            log.warning("Janus returned no SDP answer: %s", result)
-            raise HTTPException(502, "Janus did not return SDP answer")
+        if answer_sdp:
+            return {"type": "answer", "sdp": answer_sdp}
 
-        return {"type": "answer", "sdp": answer_sdp}
+        # If no SDP in response, Janus will send it via event
+        # For now, return error
+        log.warning("Janus did not return SDP answer synchronously: %s", result)
+        raise HTTPException(502, "Janus did not return SDP answer — check Janus Streaming config")
 
     except Exception as e:
         log.error("WebRTC signaling failed: %s", e)

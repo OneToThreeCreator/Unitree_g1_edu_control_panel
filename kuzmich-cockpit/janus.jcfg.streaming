@@ -1,0 +1,32 @@
+general: {
+    admin_key = "janusadmin"
+    events = false
+}
+
+# Camera H.265 stream
+stream-1: {
+    type = rtp
+    id = 1
+    description = "Unitree G1 Camera H.265"
+    metadata = "Unitree G1 camera stream"
+    audio = false
+    video = true
+    videoport = 5004
+    videopt = 96
+    videocodec = h265
+    videobitrate = 4000
+}
+
+# Camera H.264 stream (fallback)
+stream-2: {
+    type = rtp
+    id = 2
+    description = "Unitree G1 Camera H.264"
+    metadata = "Unitree G1 camera stream H.264"
+    audio = false
+    video = true
+    videoport = 5006
+    videopt = 96
+    videocodec = h264
+    videobitrate = 6000
+}
