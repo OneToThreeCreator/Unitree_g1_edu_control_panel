@@ -1,15 +1,16 @@
-"""Async Janus Gateway client using WebSocket transport.
+"""Async Janus Gateway client using HTTP transport with proper event polling.
 
-Flow for Streaming plugin:
-1. watch → Janus returns SDP offer in async event
-2. start with JSEP answer → Janus starts relaying
-3. trickle ICE candidates separately
+Janus Streaming plugin uses async events:
+1. watch → ack + async event with SDP offer
+2. start with JSEP answer → ack + async "starting" event
+
+We poll /janus/{session_id} to receive async events.
 """
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
+import time
 import uuid
 from typing import Any, Dict, Optional
 
@@ -26,99 +27,78 @@ class JanusError(Exception):
 
 
 class JanusClient:
-    """Async client for Janus Gateway Streaming plugin via WebSocket."""
+    """Async client for Janus Gateway Streaming plugin via HTTP."""
 
-    def __init__(self, ws_url: str = "ws://127.0.0.1:8188/janus") -> None:
-        self._ws_url = ws_url
+    def __init__(self, base_url: str = "http://127.0.0.1:8088") -> None:
+        self._base_url = base_url.rstrip("/")
         self._session_id: Optional[int] = None
         self._handle_id: Optional[int] = None
-        self._ws: Optional[aiohttp.ClientWebSocketResponse] = None
         self._session: Optional[aiohttp.ClientSession] = None
-        self._pending_events: asyncio.Queue = asyncio.Queue()
 
     @property
     def session_id(self) -> Optional[int]:
         return self._session_id
 
     async def close(self) -> None:
-        if self._ws and not self._ws.closed:
-            await self._ws.close()
         if self._session and not self._session.closed:
             await self._session.close()
-        self._ws = None
         self._session = None
 
     def _transaction(self) -> str:
         return uuid.uuid4().hex[:12]
 
-    async def connect(self) -> None:
-        """Connect to Janus via WebSocket."""
-        self._session = aiohttp.ClientSession()
-        self._ws = await self._session.ws_connect(self._ws_url)
-        log.info("Connected to Janus WebSocket: %s", self._ws_url)
+    async def _get_session(self) -> aiohttp.ClientSession:
+        if self._session is None or self._session.closed:
+            self._session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10))
+        return self._session
 
-    async def _send_and_wait(self, payload: Dict[str, Any], timeout: float = 10) -> Dict[str, Any]:
-        """Send message and wait for response matching transaction."""
-        if not self._ws or self._ws.closed:
-            raise JanusError(-1, "Not connected to Janus")
-
+    async def _send(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Send message and return response (synchronous part only)."""
+        session = await self._get_session()
         txn = payload.get("transaction", self._transaction())
         payload["transaction"] = txn
 
-        await self._ws.send_json(payload)
+        url = f"{self._base_url}/janus"
+        if self._session_id:
+            url = f"{self._base_url}/janus/{self._session_id}"
+            if self._handle_id and "handle_id" not in payload:
+                payload["session_id"] = self._session_id
+                payload["handle_id"] = self._handle_id
 
-        # Wait for response with matching transaction
-        import time
+        async with session.post(url, json=payload) as resp:
+            data = await resp.json()
+            if data.get("janus") == "error":
+                err = data.get("error", {})
+                raise JanusError(err.get("code", -1), err.get("reason", "unknown"))
+            return data
+
+    async def _poll_events(self, timeout: float = 5) -> list:
+        """Poll Janus long-poll endpoint for async events."""
+        if not self._session_id:
+            return []
+        session = await self._get_session()
+        url = f"{self._base_url}/janus/{self._session_id}"
+        events = []
         deadline = time.time() + timeout
         while time.time() < deadline:
             try:
-                msg = await asyncio.wait_for(self._ws.receive(), timeout=1.0)
-                if msg.type == aiohttp.WSMsgType.TEXT:
-                    data = json.loads(msg.data)
-                    if data.get("transaction") == txn:
-                        if data.get("janus") == "error":
-                            err = data.get("error", {})
-                            raise JanusError(err.get("code", -1), err.get("reason", "unknown"))
-                        return data
-                    # Store other messages (events) for later pickup
-                    await self._pending_events.put(data)
-                elif msg.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
-                    raise JanusError(-1, "WebSocket closed")
-            except asyncio.TimeoutError:
-                continue
-
-        raise JanusError(-1, f"Timeout waiting for response to {payload.get('janus')}")
-
-    async def _poll_event(self, timeout: float = 5) -> Optional[Dict[str, Any]]:
-        """Poll for async events from Janus."""
-        import time
-        deadline = time.time() + timeout
-
-        # First check queued events
-        while not self._pending_events.empty():
-            event = self._pending_events.get_nowait()
-            if event.get("janus") == "event":
-                return event
-
-        # Then wait for new messages
-        while time.time() < deadline:
-            try:
-                msg = await asyncio.wait_for(self._ws.receive(), timeout=1.0)
-                if msg.type == aiohttp.WSMsgType.TEXT:
-                    data = json.loads(msg.data)
+                async with session.get(url) as resp:
+                    data = await resp.json()
                     if data.get("janus") == "event":
-                        return data
-                    # Queue non-event messages
-                    await self._pending_events.put(data)
-                elif msg.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
-                    return None
+                        events.append(data)
+                        return events
+                    elif data.get("janus") == "error":
+                        log.warning("Janus poll error: %s", data)
+                        return events
             except asyncio.TimeoutError:
-                continue
-
-        return None
+                break
+            except Exception:
+                break
+            await asyncio.sleep(0.05)
+        return events
 
     async def create_session(self) -> int:
-        result = await self._send_and_wait({"janus": "create"})
+        result = await self._send({"janus": "create"})
         self._session_id = result["data"]["id"]
         log.info("Janus session created: %s", self._session_id)
         return self._session_id
@@ -127,9 +107,8 @@ class JanusClient:
         if not self._session_id:
             raise JanusError(-1, "No session")
 
-        result = await self._send_and_wait({
+        result = await self._send({
             "janus": "attach",
-            "session_id": self._session_id,
             "plugin": plugin,
         })
         self._handle_id = result["data"]["id"]
@@ -137,64 +116,53 @@ class JanusClient:
         return self._handle_id
 
     async def watch(self, mountpoint_id: int = 1) -> Dict[str, Any]:
-        """Watch a mountpoint. Returns SDP offer in async event."""
-        # Send watch
-        result = await self._send_and_wait({
+        """Watch mountpoint. Returns SDP offer from async event."""
+        # Send watch request (synchronous ack)
+        await self._send({
             "janus": "message",
-            "session_id": self._session_id,
-            "handle_id": self._handle_id,
             "body": {"request": "watch", "id": mountpoint_id},
         })
-        log.info("Watch sent, waiting for SDP offer event...")
+        log.info("Watch sent, polling for SDP offer event...")
 
-        # Wait for async event with SDP offer
-        event = await self._poll_event(timeout=10)
-        if not event:
-            raise JanusError(-1, "No event received after watch")
+        # Poll for async event with SDP offer
+        events = await self._poll_events(timeout=10)
+        for event in events:
+            jsep = event.get("jsep")
+            if jsep and jsep.get("sdp"):
+                log.info("Got SDP offer from Janus")
+                return event
 
-        jsep = event.get("jsep")
-        if not jsep or not jsep.get("sdp"):
-            raise JanusError(-1, f"No SDP in event: {event}")
-
-        log.info("Got SDP offer from Janus")
-        return event
+        raise JanusError(-1, "No SDP offer received from Janus")
 
     async def start(self, sdp: str) -> Dict[str, Any]:
         """Start stream with SDP answer in JSEP."""
-        result = await self._send_and_wait({
+        await self._send({
             "janus": "message",
-            "session_id": self._session_id,
-            "handle_id": self._handle_id,
             "body": {"request": "start"},
             "jsep": {"type": "answer", "sdp": sdp},
         })
-        log.info("Start sent, waiting for starting event...")
+        log.info("Start sent, polling for starting event...")
 
-        # Wait for async "starting" event
-        event = await self._poll_event(timeout=5)
-        if event:
+        # Poll for async "starting" event
+        events = await self._poll_events(timeout=5)
+        for event in events:
             status = event.get("plugindata", {}).get("data", {}).get("status")
             log.info("Stream status: %s", status)
 
-        return result
+        return {"janus": "ack"}
 
     async def trickle_ice(self, candidate: Dict[str, Any]) -> Dict[str, Any]:
         """Send ICE candidate."""
-        return await self._send_and_wait({
+        return await self._send({
             "janus": "trickle",
-            "session_id": self._session_id,
-            "handle_id": self._handle_id,
             "candidate": candidate,
-        }, timeout=3)
+        })
 
     async def destroy_session(self) -> None:
         if not self._session_id:
             return
         try:
-            await self._send_and_wait({
-                "janus": "destroy",
-                "session_id": self._session_id,
-            }, timeout=3)
+            await self._send({"janus": "destroy"})
         except Exception:
             pass
         self._session_id = None

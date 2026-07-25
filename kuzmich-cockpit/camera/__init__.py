@@ -27,8 +27,8 @@ _webrtc_sessions: Dict[int, JanusClient] = {}  # handle_id → client
 def init_camera(config: CameraConfig, teleop_bridge: object = None) -> None:
     global _camera_manager, _janus_client
     _camera_manager = CameraManager(config, teleop_bridge=teleop_bridge)
-    _janus_client = JanusClient(config.janus_ws_url)
-    log.info("Camera module initialized (Janus WS: %s)", config.janus_ws_url)
+    _janus_client = JanusClient(config.janus_http_url)
+    log.info("Camera module initialized (Janus HTTP: %s)", config.janus_http_url)
 
 
 def get_camera_manager() -> Optional[CameraManager]:
@@ -114,9 +114,8 @@ async def webrtc_offer(data: Dict[str, Any]):
         global _janus_client
         if _janus_client:
             await _janus_client.close()
-        _janus_client = JanusClient(_camera_manager.config.janus_ws_url)
+        _janus_client = JanusClient(_camera_manager.config.janus_http_url)
 
-        await _janus_client.connect()
         await _janus_client.create_session()
         await _janus_client.attach_plugin("janus.plugin.streaming")
 
