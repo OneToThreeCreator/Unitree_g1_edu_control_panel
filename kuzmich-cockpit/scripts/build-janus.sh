@@ -18,14 +18,14 @@ sudo apt-get install -y \
     liblua5.3-dev libconfig-dev libnice-dev libwebsockets-dev \
     gengetopt pkg-config cmake automake autoconf libtool
 
-# Build Janus
-BUILD_DIR="/tmp/janus-build"
-mkdir -p "$BUILD_DIR"
-cd "$BUILD_DIR"
-rm -rf *
+# Run autogen.sh in source directory
+echo "Running autogen.sh..."
+cd "$JANUS_SRC"
+./autogen.sh
 
+# Configure with minimal plugins
 echo "Configuring Janus..."
-"$JANUS_SRC/configure" \
+./configure \
     --enable-websockets \
     --enable-rest \
     --disable-rabbitmq \
@@ -44,9 +44,11 @@ echo "Configuring Janus..."
     --disable-plugin-lua \
     --disable-plugin-duktape
 
+# Build
 echo "Building..."
 make -j$(nproc)
 
+# Install
 echo "Installing..."
 sudo make install
 
