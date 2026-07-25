@@ -53,17 +53,18 @@ class JanusClient:
         return self._session
 
     async def _send(self, payload: Dict[str, Any]) -> Dict[str, Any]:
-        """Send message and return response (synchronous part only)."""
+        """Send message and return response."""
         session = await self._get_session()
         txn = payload.get("transaction", self._transaction())
         payload["transaction"] = txn
 
-        url = f"{self._base_url}/janus"
-        if self._session_id:
+        # Determine URL based on context
+        if self._session_id and self._handle_id:
+            url = f"{self._base_url}/janus/{self._session_id}/{self._handle_id}"
+        elif self._session_id:
             url = f"{self._base_url}/janus/{self._session_id}"
-            if self._handle_id and "handle_id" not in payload:
-                payload["session_id"] = self._session_id
-                payload["handle_id"] = self._handle_id
+        else:
+            url = f"{self._base_url}/janus"
 
         async with session.post(url, json=payload) as resp:
             data = await resp.json()
