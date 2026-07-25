@@ -154,6 +154,10 @@ async def webrtc_answer(data: Dict[str, Any]):
     if sdp_type != "answer" or not sdp:
         raise HTTPException(400, "Expected SDP answer with type='answer'")
 
+    # Fix SDP answer for Janus 0.7.3 DTLS compatibility:
+    # Browser sends a=setup:actpass, but Janus expects a=setup:active
+    sdp = sdp.replace("a=setup:actpass", "a=setup:active")
+
     try:
         # Step 1: Start with SDP answer in JSEP
         await _janus_client.start(sdp)
