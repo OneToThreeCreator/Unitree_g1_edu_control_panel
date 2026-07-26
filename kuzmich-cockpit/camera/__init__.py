@@ -89,6 +89,7 @@ async def livekit_token(identity: str = "viewer"):
 
     cfg = _camera_manager.config
 
+<<<<<<< HEAD
     # Detect WSL: if hostname resolves to 127.x.x.x, use the LAN IP instead
     # so the browser on Windows can reach LiveKit in WSL
     try:
@@ -127,6 +128,77 @@ async def livekit_token(identity: str = "viewer"):
 # (port 8080) because browser CSP blocks cross-origin WebSocket connections.
 # GStreamer websocketsink runs on separate ports (8082, 8083, 8084).
 # Python proxies WebSocket data from GStreamer to clients on port 8080.
+=======
+@router.post("/webrtc/ice")
+async def webrtc_ice(data: Dict[str, Any]):
+    """Buffer ICE candidate — will be sent after start."""
+    global _pending_ice
+
+    candidate = data.get("candidate")
+    if not candidate:
+        raise HTTPException(400, "Missing ICE candidate")
+
+    _pending_ice.append(candidate)
+    log.info("ICE candidate buffered (%d pending)", len(_pending_ice))
+    return {"status": "ok"}
+
+
+@router.post("/webrtc/answer")
+async def webrtc_answer(data: Dict[str, Any]):
+    """Receive browser SDP answer, send start, then trickle all candidates."""
+    global _pending_ice
+    if _janus_client is None:
+        raise HTTPException(503, "No active Janus session")
+
+    sdp = data.get("sdp")
+    sdp_type = data.get("type")
+    if sdp_type != "answer" or not sdp:
+        raise HTTPException(400, "Expected SDP answer with type='answer'")
+
+    # Fix SDP answer for Janus DTLS compatibility
+    sdp = sdp.replace("a=setup:actpass", "a=setup:active")
+
+    try:
+        # Step 1: Start with SDP answer in JSEP
+        await _janus_client.start(sdp)
+
+        # Step 2: Wait for Janus to process SDP
+        await asyncio.sleep(0.2)
+
+        # Step 3: Send ALL buffered ICE candidates
+        sent = 0
+        while _pending_ice:
+            candidates = list(_pending_ice)
+            _pending_ice = []
+            for c in candidates:
+                try:
+                    await _janus_client.trickle_ice(c)
+                    sent += 1
+                except Exception:
+                    pass
+            # Check for any new candidates that arrived while sending
+            await asyncio.sleep(0.05)
+
+        log.info("WebRTC started, sent %d ICE candidates", sent)
+        return {"status": "ok"}
+    except Exception as e:
+        log.error("WebRTC answer failed: %s", e)
+        raise HTTPException(502, f"WebRTC answer error: {e}")
+
+
+@router.post("/webrtc/hangup")
+async def webrtc_hangup():
+    """Cleanup WebRTC session."""
+    global _janus_client
+    if _camera_manager is None:
+        raise HTTPException(503, "Camera module not initialized")
+
+    # Reset Janus client — next offer will create new session
+    if _janus_client:
+        await _janus_client.close()
+        _janus_client = JanusClient(_camera_manager.config.janus_http_url)
+    return {"status": "ok"}
+>>>>>>> e8c98a7f1a351bd52cf27447bc4ef590d2391f81
 
 
 # --- WebSocket proxies (port 8080) ---
