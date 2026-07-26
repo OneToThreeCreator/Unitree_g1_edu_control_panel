@@ -18,17 +18,6 @@ sudo apt-get install -y python3 python3-pip python3-venv
 
 # Python packages (inside venv)
 pip install -r requirements.txt
-
-# Janus build dependencies
-sudo apt-get install -y \
-  libmicrohttpd-dev libjansson-dev libssl-dev \
-  libglib2.0-dev libopus-dev libogg-dev libcurl4-openssl-dev \
-  liblua5.3-dev libconfig-dev libnice-dev libwebsockets-dev \
-  libsrtp2-dev \
-  gengetopt pkg-config cmake automake autoconf libtool
-
-# Build Janus
-bash scripts/build-janus.sh
 ```
 
 ### Key GStreamer plugins
@@ -50,9 +39,6 @@ sudo apt-get install -y \
   libgstreamer1.0-dev \
   libgstreamer-plugins-bad1.0-dev \
   nvidia-l4t-gstreamer
-
-# Janus SFU
-sudo apt-get install -y janus
 ```
 
 ### Jetson-specific encoders
@@ -64,42 +50,67 @@ sudo apt-get install -y janus
 | `omxh265enc` | OpenMAX H.265 — older JetPack |
 | `omxh264enc` | OpenMAX H.264 — older JetPack |
 
-## Janus Gateway
+## LiveKit SFU
 
-Janus is built from source as a git submodule in `janus/`.
+LiveKit is installed as a pre-built binary in `livekit-bin/`.
 
-### Build
+### Install
+
 ```bash
-bash scripts/build-janus.sh
+# Download livekit-server (linux-amd64 for dev, linux-arm64 for Jetson)
+curl -sSL https://get.livekit.io | bash
+# Binary lands at /usr/local/bin/livekit-server
+
+# Install CLI tool (optional, for testing)
+curl -sSL https://get.livekit.io/cli | bash
+# Binary lands at /usr/local/bin/lk
 ```
 
 ### Start
+
 ```bash
-bash scripts/start-janus.sh
+bash scripts/start-livekit.sh
 # Or manually:
-janus -o
+livekit-server --dev
+# Dev keys: API Key=devkey, API Secret=secret
+# Listening on: ws://localhost:7880
 ```
 
-### Config files
-- `janus-conf/janus.jcfg` — Main config
-- `janus-conf/janus.plugin.streaming.jcfg` — Streaming plugin (H.265/H.264 mountpoints)
-- `janus-conf/janus.transport.http.jcfg` — HTTP API
-- `janus-conf/janus.transport.websockets.jcfg` — WebSocket transport
+### Config
+
+`livekit.yaml` — LiveKit server configuration:
+```yaml
+port: 7880
+rtc:
+  port_range_start: 50000
+  port_range_end: 60000
+  tcp_port: 7881
+  use_external_ip: false
+keys:
+  devkey: secret
+logging:
+  level: info
+```
+
+### Test with CLI
 
 ```bash
-# Ubuntu/Debian
-sudo apt-get install -y janus
-
-# Or build from source (for latest version)
-# https://github.com/meetecho/janus-gateway
+# Publish test video to a room
+lk room join \
+  --url ws://localhost:7880 \
+  --api-key devkey --api-secret secret \
+  --identity test-publisher \
+  --publish-demo \
+  test-room
 ```
 
-### Janus config
+## GStreamer 1.16 Note (Jetson JetPack 5)
 
-Required in `/etc/janus/janus.jcfg`:
-- Enable `videoroom` plugin
-- Set STUN server
-- Create room matching `janus_room_id` (default: 1234)
+**`whipsink` from gst-plugins-rs requires GStreamer >= 1.20 and is NOT available on Jetson.**
+
+Instead, we use:
+- `webrtcbin` (available since GStreamer 1.14) with Python WHIP signaling
+- Or RTMP fallback via `flvmux` + `rtmp2sink` (H.264 only)
 
 ## Custom GStreamer Plugin
 

@@ -1,8 +1,10 @@
 """Camera module — FastAPI router + initialization.
 
 WebSocket endpoints (raw BGR, depth) are served by GStreamer natively
-via `websocketserver` elements on ports 8082/8083. Python only handles
-REST API and WebRTC signaling via Janus SFU.
+via `websocketserver` elements on ports 8082/8083. Python handles
+REST API and LiveKit JWT token generation. WebRTC publishing is done
+by camera/whip_publisher.py which reads H.265 from GStreamer's
+websocketsink:8084 and publishes via webrtcbin to LiveKit WHIP.
 """
 from __future__ import annotations
 
@@ -13,22 +15,18 @@ from fastapi import APIRouter, HTTPException, Response, WebSocket
 
 from .config import CameraConfig
 from .manager import CameraManager
-from .janus_client import JanusClient
 
 log = logging.getLogger("cockpit.camera")
 
 router = APIRouter(prefix="/api/camera", tags=["camera"])
 
 _camera_manager: Optional[CameraManager] = None
-_janus_client: Optional[JanusClient] = None
-_webrtc_sessions: Dict[int, JanusClient] = {}  # handle_id → client
 
 
 def init_camera(config: CameraConfig, teleop_bridge: object = None) -> None:
-    global _camera_manager, _janus_client
+    global _camera_manager
     _camera_manager = CameraManager(config, teleop_bridge=teleop_bridge)
-    _janus_client = JanusClient(config.janus_http_url)
-    log.info("Camera module initialized (Janus HTTP: %s)", config.janus_http_url)
+    log.info("Camera module initialized (LiveKit: %s)", config.livekit_url)
 
 
 def get_camera_manager() -> Optional[CameraManager]:
@@ -77,148 +75,61 @@ async def camera_snapshot():
     return Response(status_code=503, content=b"no frame available")
 
 
+# --- LiveKit JWT token generation ---
+
+@router.get("/livekit-token")
+async def livekit_token(identity: str = "viewer"):
+    """Generate a LiveKit JWT token for browser to join the camera room."""
+    if _camera_manager is None:
+        raise HTTPException(503, "Camera module not initialized")
+
+    import time
+    import jwt
+    import socket
+
+    cfg = _camera_manager.config
+
+    # Detect WSL: if hostname resolves to 127.x.x.x, use the LAN IP instead
+    # so the browser on Windows can reach LiveKit in WSL
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        local_ip = s.getsockname()[0]
+        s.close()
+    except Exception:
+        local_ip = "127.0.0.1"
+
+    livekit_url = f"ws://{local_ip}:7880"
+
+    now = int(time.time())
+    payload = {
+        "iss": cfg.livekit_api_key,
+        "sub": identity,
+        "iat": now,
+        "exp": now + 86400,
+        "video": {
+            "roomJoin": True,
+            "room": cfg.livekit_room,
+        },
+    }
+    token = jwt.encode(payload, cfg.livekit_api_secret, algorithm="HS256")
+    # PyJWT 1.x returns bytes on Python 3.8, decode to str
+    if isinstance(token, bytes):
+        token = token.decode("utf-8")
+
+    return {
+        "token": token,
+        "url": livekit_url,
+    }
+
+
 # NOTE: WebSocket endpoints for MJPEG, raw BGR, depth are proxied through FastAPI
 # (port 8080) because browser CSP blocks cross-origin WebSocket connections.
 # GStreamer websocketsink runs on separate ports (8082, 8083, 8084).
 # Python proxies WebSocket data from GStreamer to clients on port 8080.
 
 
-# --- WebRTC signaling (Janus Streaming plugin) ---
-_pending_ice: list = []  # Buffer ICE candidates until handle is ready
-
-
-@router.post("/webrtc/offer")
-async def webrtc_offer(data: Dict[str, Any]):
-    """WebRTC SDP offer/answer exchange via Janus Streaming plugin.
-
-    Flow:
-    1. Browser sends SDP offer
-    2. Backend connects to Janus via WebSocket, creates session, attaches plugin
-    3. Sends "watch" — Janus returns SDP offer in async event
-    4. Returns offer to browser
-    5. Browser creates answer, sends back via /answer endpoint
-    """
-    global _pending_ice
-    _pending_ice = []
-
-    if _camera_manager is None:
-        raise HTTPException(503, "Camera module not initialized")
-
-    sdp = data.get("sdp")
-    sdp_type = data.get("type")
-    if sdp_type != "offer" or not sdp:
-        raise HTTPException(400, "Expected SDP offer with type='offer'")
-
-    try:
-        # Create new client for each viewer
-        global _janus_client
-        if _janus_client:
-            await _janus_client.close()
-        _janus_client = JanusClient(_camera_manager.config.janus_http_url)
-
-        await _janus_client.create_session()
-        await _janus_client.attach_plugin("janus.plugin.streaming")
-
-        # Detect H.265 support from browser SDP offer
-        has_h265 = "H265" in sdp.upper() or "HEVC" in sdp.upper()
-        mountpoint_id = 1 if has_h265 else 2  # 1=H.265, 2=H.264
-        log.info("WebRTC: browser %s, mountpoint %d", "H.265" if has_h265 else "H.264", mountpoint_id)
-
-        # Watch — Janus returns SDP offer in async event
-        event = await _janus_client.watch(mountpoint_id=mountpoint_id)
-
-        jsep = event.get("jsep", {})
-        janus_sdp = jsep.get("sdp")
-        if not janus_sdp:
-            raise HTTPException(502, "Janus did not return SDP offer")
-
-        log.info("Returning Janus SDP offer to browser")
-        return {"type": "offer", "sdp": janus_sdp}
-
-    except Exception as e:
-        log.error("WebRTC offer failed: %s", e)
-        if isinstance(e, HTTPException):
-            raise
-        raise HTTPException(502, f"WebRTC signaling error: {e}")
-
-
-@router.post("/webrtc/answer")
-async def webrtc_answer(data: Dict[str, Any]):
-    """Receive browser SDP answer, send start with JSEP, then flush ICE."""
-    global _pending_ice
-    if _janus_client is None:
-        raise HTTPException(503, "No active Janus session")
-
-    sdp = data.get("sdp")
-    sdp_type = data.get("type")
-    if sdp_type != "answer" or not sdp:
-        raise HTTPException(400, "Expected SDP answer with type='answer'")
-
-    # Fix SDP answer for Janus 0.7.3 DTLS compatibility:
-    # Browser sends a=setup:actpass, but Janus expects a=setup:active
-    sdp = sdp.replace("a=setup:actpass", "a=setup:active")
-
-    try:
-        # Step 1: Start with SDP answer in JSEP FIRST (per Janus docs)
-        await _janus_client.start(sdp)
-
-        # Step 2: Then send ICE trickle candidates
-        for c in _pending_ice:
-            try:
-                await _janus_client.trickle_ice(c)
-            except Exception:
-                pass
-        _pending_ice = []
-
-        log.info("WebRTC stream started")
-
-        return {"status": "ok"}
-    except Exception as e:
-        log.error("WebRTC answer failed: %s", e)
-        raise HTTPException(502, f"WebRTC answer error: {e}")
-
-
-@router.post("/webrtc/ice")
-async def webrtc_ice(data: Dict[str, Any]):
-    """Forward ICE candidate to Janus immediately, buffer if handle not ready."""
-    global _pending_ice
-
-    candidate = data.get("candidate")
-    if not candidate:
-        raise HTTPException(400, "Missing ICE candidate")
-
-    # If handle ready, send immediately
-    if _janus_client is not None and _janus_client._handle_id is not None:
-        try:
-            await _janus_client.trickle_ice(candidate)
-            return {"status": "ok"}
-        except Exception as e:
-            log.warning("ICE trickle failed: %s", e)
-            _pending_ice.append(candidate)
-            return {"status": "error"}
-    else:
-        _pending_ice.append(candidate)
-        log.info("ICE candidate buffered (%d pending)", len(_pending_ice))
-        return {"status": "buffered"}
-
-
-@router.post("/webrtc/hangup")
-async def webrtc_hangup():
-    """Cleanup WebRTC session."""
-    global _janus_client
-    if _camera_manager is None:
-        raise HTTPException(503, "Camera module not initialized")
-
-    # Reset Janus client — next offer will create new session
-    if _janus_client:
-        await _janus_client.close()
-        _janus_client = JanusClient(_camera_manager.config.janus_http_url)
-    return {"status": "ok"}
-
-
 # --- WebSocket proxies (port 8080) ---
-# Browser CSP blocks cross-origin WebSocket to GStreamer ports (8082-8084).
-# Python proxies WebSocket data from GStreamer websocketsink to browser clients.
 
 @router.websocket("/ws/mjpeg")
 async def ws_mjpeg_proxy(ws: WebSocket):

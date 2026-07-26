@@ -16,6 +16,7 @@
   <a href="/prompts.html" class="back-btn" style="margin-left:10px">Промты ИИ</a>
   <a href="/config.html" class="back-btn">Конфигурация ИИ</a>
   <a href="/files.html" class="back-btn">Файлы</a>
+  <a href="/viewer.html" class="back-btn">LiveKit Viewer</a>
   <div class="spacer"></div>
   <div class="modes">
     <button id="mManual" class="active">Ручной пульт</button>
@@ -155,6 +156,8 @@
 <script src="js/base.js"></script>
 <script src="js/api.js"></script>
 <script src="js/battery.js"></script>
+<script src="https://unpkg.com/livekit-client@2/dist/livekit-client.umd.js"></script>
+<script src="js/livekit-viewer.js"></script>
 <script>
 'use strict';
 let ws=null, cfg=null, mode="manual", estop=false, aiMode="off", companionConfig=null, lastAiMode="internal";
@@ -418,6 +421,7 @@ function updateCamToggleState() {
 function disconnectVideo() {
   if (camWs) { try { camWs.close(); } catch(e){} camWs = null; }
   if (camPeer) { try { camPeer.close(); } catch(e){} camPeer = null; }
+  disconnectLiveKit();
   const v = $("#feedVideo"), img = $("#feed"), ph = $("#feedph");
   if (v) { v.style.display = "none"; v.srcObject = null; }
   if (img) img.style.display = "none";
@@ -428,10 +432,10 @@ async function connectVideo() {
   disconnectVideo();
   updateCamStatus("connecting");
   try {
-    // Try WebRTC first
-    await connectWebRTC();
+    // Try LiveKit WebRTC first
+    await connectLiveKit();
   } catch(e) {
-    console.warn("[CAM] WebRTC failed, falling back to MJPEG:", e);
+    console.warn("[CAM] LiveKit failed, falling back to MJPEG:", e);
     connectMjpeg();
   }
 }

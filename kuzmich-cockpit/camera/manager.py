@@ -36,9 +36,7 @@ class CameraManager:
         self._state = CameraState.STOPPED
         self._poll_task: Optional[asyncio.Task] = None
         self._gst_process: Optional[subprocess.Popen] = None
-        self._gst_depth_process: Optional[subprocess.Popen] = None
-        self._gst_rtp_h265_process: Optional[subprocess.Popen] = None
-        self._gst_rtp_h264_process: Optional[subprocess.Popen] = None
+        self._whip_sender: Optional[object] = None  # WHIPDualSender instance
 
     @property
     def state(self) -> CameraState:
@@ -97,10 +95,18 @@ class CameraManager:
             self._poll_task = asyncio.create_task(self._teleop_poll_loop())
 
     async def stop(self) -> None:
-        """Stop camera server + GStreamer pipeline."""
+        """Stop camera server + GStreamer pipeline and WHIP."""
         if self._poll_task:
             self._poll_task.cancel()
             self._poll_task = None
+
+        # Stop WHIP publisher
+        if self._whip_sender:
+            try:
+                await self._whip_sender.stop()
+            except Exception as e:
+                log.warning("Error stopping WHIP sender: %s", e)
+            self._whip_sender = None
 
         self._stop_gstreamer()
         self._state = CameraState.DISABLED
@@ -111,6 +117,14 @@ class CameraManager:
         if self._poll_task:
             self._poll_task.cancel()
             self._poll_task = None
+
+        # Stop WHIP publisher but keep GStreamer running
+        if self._whip_sender:
+            try:
+                await self._whip_sender.stop()
+            except Exception as e:
+                log.warning("Error stopping WHIP sender: %s", e)
+            self._whip_sender = None
 
         self._state = CameraState.DISABLED
         log.info("Camera paused → DISABLED (GStreamer alive)")
@@ -124,61 +138,49 @@ class CameraManager:
         return None
 
     def _start_gstreamer(self) -> None:
-        """Launch GStreamer pipeline (color + optional depth as separate processes)."""
+        """Launch unified GStreamer pipeline:
+           - One appsrc → tee → [H.265 RTP→udpsink, H.264 RTP→udpsink, MJPEG→websocketsink]
+        """
         if self._gst_process and self._gst_process.poll() is None:
             log.info("GStreamer already running (pid=%s)", self._gst_process.pid)
             return
 
         encoder_h265 = self._config.gst_encoder_h265
         bitrate_h265 = self._config.gst_bitrate_h265
+        encoder_h264 = self._config.gst_encoder_h264
+        bitrate_h264 = self._config.gst_bitrate_h264
         w, h, fps = self._config.color_width, self._config.color_height, self._config.color_fps
 
-        # GStreamer env — add websocketsink plugin path
         import os
         gst_env = os.environ.copy()
         ws_bin = os.path.join(os.path.dirname(os.path.dirname(__file__)), "gstwebsocketsink-bin")
         gst_env["GST_PLUGIN_PATH"] = ws_bin
 
-        # Color pipeline (dual-encode: H.265 + H.264 for browser fallback):
-        # appsrc (BGR) → tee
-        #   ├── queue → videoconvert → BGRx → nvvidconv → H.265 encoder → tee
-        #   │   ├── websocketsink:8084 (H.265)
-        #   │   └── rtph265pay → udpsink:5004 (RTP H.265 for Janus)
-        #   ├── queue → videoconvert → BGRx → nvvidconv → H.264 encoder → tee
-        #   │   ├── websocketsink:8086 (H.264)
-        #   │   └── rtph264pay → udpsink:5006 (RTP H.264 for Janus)
-        #   └── queue → jpegenc → websocketsink:8082 (MJPEG)
-        encoder_h264 = self._config.gst_encoder_h264
-        bitrate_h264 = self._config.gst_bitrate_h264
-        rtp_port = self._config.janus_rtp_h265_port
-        rtp_h264_port = self._config.janus_rtp_h264_port
-        color_pipeline = (
+        # Единый pipeline с tee
+        pipeline = (
             f"appsrc name=src is-live=true format=time "
             f"! video/x-raw,format=BGR,width={w},height={h},framerate={fps}/1 "
             f"! tee name=t "
-            f"t. ! queue ! videoconvert ! video/x-raw,format=BGRx "
-            f"! nvvidconv ! {encoder_h265} bitrate={bitrate_h265} ! h265parse ! tee name=enc "
-            f"enc. ! queue ! websocketsink host=0.0.0.0 port={self._config.ws_raw_bgr_port + 2} "
-            f"enc. ! queue ! rtph265pay config-interval=1 ! udpsink host=127.0.0.1 port={rtp_port} "
-            f"t. ! queue ! videoconvert ! video/x-raw,format=BGRx "
-            f"! nvvidconv ! {encoder_h264} bitrate={bitrate_h264} ! h264parse ! tee name=enc264 "
-            f"enc264. ! queue ! websocketsink host=0.0.0.0 port={self._config.ws_raw_bgr_port + 4} "
-            f"enc264. ! queue ! rtph264pay config-interval=1 ! udpsink host=127.0.0.1 port={rtp_h264_port} "
-            f"t. ! queue ! jpegenc quality=80 "
-            f"! websocketsink host=0.0.0.0 port={self._config.ws_raw_bgr_port}"
+            f"t. ! queue ! videoconvert ! video/x-raw,format=BGR ! jpegenc quality=80 "
+            f"  ! websocketsink host=0.0.0.0 port={self._config.ws_raw_bgr_port} "
+            f"t. ! queue ! videoconvert ! video/x-raw,format=BGRx ! nvvidconv "
+            f"  ! {encoder_h265} bitrate={bitrate_h265} ! h265parse ! rtph265pay config-interval=1 "
+            f"  ! udpsink host=127.0.0.1 port={self._config.rtp_h265_port} "
+            f"t. ! queue ! videoconvert ! video/x-raw,format=BGRx ! nvvidconv "
+            f"  ! {encoder_h264} bitrate={bitrate_h264} ! h264parse ! rtph264pay config-interval=1 "
+            f"  ! udpsink host=127.0.0.1 port={self._config.rtp_h264_port}"
         )
 
-        # Split pipeline into argv (caps filters have no spaces, so split is safe)
-        cmd_color = ["gst-launch-1.0", "-e"] + color_pipeline.split(" ")
-        log.info("Starting GStreamer color: %s...", " ".join(cmd_color[:8]) + "...")
+        cmd = ["gst-launch-1.0", "-e"] + pipeline.split(" ")
+        log.info("Starting unified GStreamer pipeline: %s...", " ".join(cmd[:6]) + "...")
 
         try:
             self._gst_process = subprocess.Popen(
-                cmd_color, env=gst_env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                cmd, env=gst_env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
                 preexec_fn=lambda: signal.signal(signal.SIGINT, signal.SIG_IGN),
             )
             self._log_gst_stderr(self._gst_process)
-            log.info("GStreamer color started (pid=%s)", self._gst_process.pid)
+            log.info("GStreamer unified started (pid=%s)", self._gst_process.pid)
         except FileNotFoundError:
             log.error("gst-launch-1.0 not found")
             return
@@ -186,28 +188,25 @@ class CameraManager:
             log.error("Failed to start GStreamer: %s", e)
             return
 
-        # Depth pipeline (separate process)
-        if self._config.depth_enabled:
-            dw, dh, dfps = self._config.depth_width, self._config.depth_height, self._config.depth_fps
-            depth_pipeline = (
-                f"appsrc name=depth_src is-live=true format=time "
-                f"! video/x-raw,format=GRAY16_LE,width={dw},height={dh},framerate={dfps}/1 "
-                f"! videoconvert "
-                f"! websocketsink host=0.0.0.0 port={self._config.ws_depth_port}"
+        # Запускаем WHIP‑публикацию
+        try:
+            from .whipsender import WHIPDualSender
+            self._whip_sender = WHIPDualSender(
+                whip_url=self._config.livekit_whip_url,
+                h265_port=self._config.rtp_h265_port,
+                h264_port=self._config.rtp_h264_port,
+                stun_url=self._config.webrtc_stun_gst,
             )
-            cmd_depth = ["gst-launch-1.0", "-e"] + depth_pipeline.split(" ")
-            try:
-                self._gst_depth_process = subprocess.Popen(
-                    cmd_depth, env=gst_env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
-                    preexec_fn=lambda: signal.signal(signal.SIGINT, signal.SIG_IGN),
-                )
-                self._log_gst_stderr(self._gst_depth_process)
-                log.info("GStreamer depth started (pid=%s)", self._gst_depth_process.pid)
-            except Exception as e:
-                log.warning("Failed to start depth pipeline: %s", e)
+            asyncio.create_task(self._whip_sender.start())
+            log.info("WHIP DualSender started")
+        except Exception as e:
+            log.error("Failed to start WHIP DualSender: %s", e)
 
     def _start_gstreamer_dry(self) -> None:
-        """Launch GStreamer pipeline with videotestsrc for DRY_RUN mode."""
+        """Launch GStreamer pipeline with videotestsrc for DRY_RUN mode.
+
+        Unified pipeline with one source and tee for all outputs.
+        """
         if self._gst_process and self._gst_process.poll() is None:
             log.info("GStreamer already running (pid=%s)", self._gst_process.pid)
             return
@@ -219,73 +218,52 @@ class CameraManager:
         ws_bin = os.path.join(os.path.dirname(os.path.dirname(__file__)), "gstwebsocketsink-bin")
         gst_env["GST_PLUGIN_PATH"] = ws_bin
 
-        # DRY_RUN pipeline: videotestsrc → tee → MJPEG / raw BGR
-        # RTP runs as separate processes to avoid tee blocking
-        rtp_port = self._config.janus_rtp_h265_port
-        rtp_h264_port = self._config.janus_rtp_h264_port
-        color_pipeline = (
+        # Единый pipeline с tee для dry_run
+        pipeline = (
             f"videotestsrc is-live=true ! "
             f"videoconvert ! video/x-raw,format=BGR,width={w},height={h},framerate={fps}/1 ! "
             f"tee name=t "
-            f"t. ! queue leaky=downstream max-size-buffers=1 ! jpegenc quality=80 "
-            f"! websocketsink host=0.0.0.0 port={self._config.ws_raw_bgr_port} "
-            f"t. ! queue leaky=downstream max-size-buffers=1 ! videoconvert ! video/x-raw,format=BGR "
-            f"! websocketsink host=0.0.0.0 port={self._config.ws_raw_bgr_port + 2}"
+            f"t. ! queue ! jpegenc quality=80 "
+            f"  ! websocketsink host=0.0.0.0 port={self._config.ws_raw_bgr_port} "
+            f"t. ! queue ! videoconvert ! video/x-raw,format=BGRx ! nvvidconv "
+            f"  ! {self._config.gst_encoder_h265} bitrate={self._config.gst_bitrate_h265} "
+            f"  ! h265parse ! rtph265pay config-interval=1 "
+            f"  ! udpsink host=127.0.0.1 port={self._config.rtp_h265_port} "
+            f"t. ! queue ! videoconvert ! video/x-raw,format=BGRx ! nvvidconv "
+            f"  ! {self._config.gst_encoder_h264} bitrate={self._config.gst_bitrate_h264} "
+            f"  ! h264parse ! rtph264pay config-interval=1 "
+            f"  ! udpsink host=127.0.0.1 port={self._config.rtp_h264_port}"
         )
 
-        cmd_color = ["gst-launch-1.0", "-e"] + color_pipeline.split(" ")
-        log.info("Starting GStreamer DRY_RUN: %s...", " ".join(cmd_color[:8]) + "...")
+        cmd = ["gst-launch-1.0", "-e"] + pipeline.split(" ")
+        log.info("Starting DRY_RUN unified pipeline: %s...", " ".join(cmd[:6]) + "...")
 
         try:
             self._gst_process = subprocess.Popen(
-                cmd_color, env=gst_env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                cmd, env=gst_env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
                 preexec_fn=lambda: signal.signal(signal.SIGINT, signal.SIG_IGN),
             )
             self._log_gst_stderr(self._gst_process)
-            log.info("GStreamer DRY_RUN started (pid=%s)", self._gst_process.pid)
+            log.info("GStreamer DRY_RUN unified started (pid=%s)", self._gst_process.pid)
         except FileNotFoundError:
             log.error("gst-launch-1.0 not found")
         except Exception as e:
             log.error("Failed to start GStreamer DRY_RUN: %s", e)
             return
 
-        # H.265 RTP: separate process for max MJPEG FPS
-        rtp_port = self._config.janus_rtp_h265_port
-        rtp_h265_pipeline = (
-            f"videotestsrc is-live=true ! "
-            f"videoconvert ! video/x-raw,format=I420,width={w},height={h},framerate={fps}/1 ! "
-            f"x265enc key-int-max=30 speed-preset=ultrafast ! h265parse ! rtph265pay config-interval=1 "
-            f"! udpsink host=127.0.0.1 port={rtp_port}"
-        )
-        cmd_rtp_h265 = ["gst-launch-1.0", "-e"] + rtp_h265_pipeline.split(" ")
+        # Запускаем WHIP‑публикацию и для dry_run
         try:
-            self._gst_rtp_h265_process = subprocess.Popen(
-                cmd_rtp_h265, env=gst_env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
-                preexec_fn=lambda: signal.signal(signal.SIGINT, signal.SIG_IGN),
+            from .whipsender import WHIPDualSender
+            self._whip_sender = WHIPDualSender(
+                whip_url=self._config.livekit_whip_url,
+                h265_port=self._config.rtp_h265_port,
+                h264_port=self._config.rtp_h264_port,
+                stun_url=self._config.webrtc_stun_gst,
             )
-            self._log_gst_stderr(self._gst_rtp_h265_process)
-            log.info("GStreamer RTP H.265 started (pid=%s) →:%s", self._gst_rtp_h265_process.pid, rtp_port)
+            asyncio.create_task(self._whip_sender.start())
+            log.info("WHIP DualSender started (dry_run)")
         except Exception as e:
-            log.warning("Failed to start H.265 RTP: %s", e)
-
-        # H.264 RTP: separate process
-        rtp_h264_pipeline = (
-            f"videotestsrc is-live=true ! "
-            f"videoconvert ! video/x-raw,format=I420,width={w},height={h},framerate={fps}/1 ! "
-            f"x264enc tune=zerolatency speed-preset=ultrafast key-int-max=30 ! h264parse ! rtph264pay config-interval=1 "
-            f"! udpsink host=127.0.0.1 port={rtp_h264_port}"
-        )
-        cmd_rtp_h264 = ["gst-launch-1.0", "-e"] + rtp_h264_pipeline.split(" ")
-        try:
-            self._gst_rtp_h264_process = subprocess.Popen(
-                cmd_rtp_h264, env=gst_env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
-                preexec_fn=lambda: signal.signal(signal.SIGINT, signal.SIG_IGN),
-            )
-            self._log_gst_stderr(self._gst_rtp_h264_process)
-            log.info("GStreamer RTP H.264 started (pid=%s) →:%s",
-                     self._gst_rtp_h264_process.pid, rtp_h264_port)
-        except Exception as e:
-            log.warning("Failed to start H.264 RTP: %s", e)
+            log.error("Failed to start WHIP DualSender: %s", e)
 
     def _log_gst_stderr(self, proc: subprocess.Popen) -> None:
         """Log GStreamer stderr in background thread."""
@@ -295,24 +273,26 @@ class CameraManager:
         threading.Thread(target=_reader, daemon=True).start()
 
     def _stop_gstreamer(self) -> None:
-        """Stop all GStreamer pipelines."""
-        for proc in [self._gst_process, self._gst_depth_process, self._gst_rtp_h265_process, self._gst_rtp_h264_process]:
-            if proc is None:
-                continue
-            if proc.poll() is not None:
-                continue
-            try:
-                pid = proc.pid
-                proc.send_signal(signal.SIGINT)
-                proc.wait(timeout=5)
-                log.info("GStreamer stopped (pid=%s)", pid)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-                log.warning("GStreamer killed (pid=%s)", proc.pid)
-            except Exception as e:
-                log.warning("Error stopping GStreamer: %s", e)
-        self._gst_process = None
-        self._gst_depth_process = None
+        """Stop GStreamer pipeline."""
+        if self._gst_process is None:
+            return
+
+        if self._gst_process.poll() is not None:
+            self._gst_process = None
+            return
+
+        try:
+            pid = self._gst_process.pid
+            self._gst_process.send_signal(signal.SIGINT)
+            self._gst_process.wait(timeout=5)
+            log.info("GStreamer stopped (pid=%s)", pid)
+        except subprocess.TimeoutExpired:
+            self._gst_process.kill()
+            log.warning("GStreamer killed (pid=%s)", self._gst_process.pid)
+        except Exception as e:
+            log.warning("Error stopping GStreamer: %s", e)
+        finally:
+            self._gst_process = None
 
     async def _teleop_poll_loop(self) -> None:
         if not self._teleop:
@@ -332,7 +312,7 @@ class CameraManager:
                     self._start_gstreamer()
             except Exception as e:
                 log.debug("Teleop poll error: %s", e)
-            await asyncio.sleep(self._config.teleop.poll_interval)
+            await asyncio.sleep(self._config.teleop_poll_interval_s)
 
     def _start_gstreamer_relay(self) -> None:
         """Launch GStreamer pipeline for RELAY mode (receives H.265 from Teleop WebSocket)."""
@@ -346,13 +326,10 @@ class CameraManager:
 
         ws_url = self._config.teleop_ws_url
         codec = self._config.teleop_codec
-        stun = self._config.webrtc_stun_url
-        rtp_port = self._config.janus_rtp_h265_port
-        rtp_h264_port = self._config.janus_rtp_h264_port
         encoder_h264 = self._config.gst_encoder_h264
         bitrate_h264 = self._config.gst_bitrate_h264
 
-        # Pipeline: receive H.265 from Teleop → tee → MJPEG / raw BGR / RTP H.265+H.264
+        # Pipeline: receive video from Teleop → tee → MJPEG / raw BGR
         pipeline = (
             f"websocketclientsrc uri={ws_url}?codec={codec} "
             f"! h265parse ! tee name=t "
@@ -361,14 +338,11 @@ class CameraManager:
             f"t. ! queue ! videoconvert "
             f"! video/x-raw,format=BGR "
             f"! websocketsink host=0.0.0.0 port={self._config.ws_raw_bgr_port} "
-            f"t. ! queue ! rtph265pay config-interval=1 "
-            f"! udpsink host=127.0.0.1 port={rtp_port} "
             f"t. ! queue ! h265parse ! decodebin ! videoconvert ! video/x-raw,format=BGRx "
-            f"! nvvidconv ! {encoder_h264} bitrate={bitrate_h264} ! h264parse ! rtph264pay config-interval=1 "
-            f"! udpsink host=127.0.0.1 port={rtp_h264_port}"
+            f"! nvvidconv ! {encoder_h264} bitrate={bitrate_h264} ! h264parse ! tee name=enc264 "
+            f"enc264. ! queue ! websocketsink host=0.0.0.0 port={self._config.ws_raw_bgr_port + 4}"
         )
 
-        # Split pipeline into argv
         cmd = ["gst-launch-1.0", "-e"] + pipeline.split(" ")
         log.info("Starting GStreamer RELAY: %s...", " ".join(cmd[:8]) + "...")
 

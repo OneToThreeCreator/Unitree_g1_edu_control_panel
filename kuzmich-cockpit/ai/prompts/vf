@@ -1,1 +1,137 @@
-Проверка
+python3 ./run.py
+INFO:     Started server process [81262]
+INFO:     Waiting for application startup.
+2026-07-26 03:22:04,283 INFO cockpit.movement: MovementBridge started (DRY-RUN)
+2026-07-26 03:22:04,283 INFO cockpit.battery: BatteryBridge started (DRY-RUN, mock soc=72)
+2026-07-26 03:22:04,283 INFO cockpit.camera: Camera module initialized (Janus HTTP: http://127.0.0.1:8088)
+2026-07-26 03:22:04,284 INFO cockpit.camera.manager: Starting DRY_RUN mode (videotestsrc)
+2026-07-26 03:22:04,284 INFO cockpit.camera.manager: Starting GStreamer DRY_RUN: gst-launch-1.0 -e videotestsrc is-live=true ! videoconvert ! video/x-raw,format=BGR,width=1280,height=720,framerate=30/1......
+2026-07-26 03:22:04,290 INFO cockpit.camera.manager: GStreamer DRY_RUN started (pid=81266)
+2026-07-26 03:22:04,297 INFO cockpit.camera.manager: GStreamer RTP H.265 started (pid=81268) →:5004
+2026-07-26 03:22:04,309 INFO cockpit.camera.manager: GStreamer RTP H.264 started (pid=81270) →:5006
+2026-07-26 03:22:04,309 INFO cockpit: Cockpit up. dry_run=True  http://0.0.0.0:8080
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8080 (Press CTRL+C to quit)
+INFO:     192.168.208.1:52800 - "GET /api/battery HTTP/1.1" 200 OK
+INFO:     192.168.208.1:52800 - "GET /api/battery HTTP/1.1" 200 OK
+INFO:     ('192.168.208.1', 54988) - "WebSocket /ws" [accepted]
+INFO:     connection open
+INFO:     192.168.208.1:52799 - "GET /api/battery HTTP/1.1" 200 OK
+INFO:     192.168.208.1:52799 - "GET /api/battery HTTP/1.1" 200 OK
+INFO:     192.168.208.1:52799 - "GET /api/battery HTTP/1.1" 200 OK
+INFO:     192.168.208.1:52800 - "GET /api/battery HTTP/1.1" 200 OK
+INFO:     192.168.208.1:52799 - "GET /api/battery HTTP/1.1" 200 OK
+INFO:     192.168.208.1:52799 - "GET /api/battery HTTP/1.1" 200 OK
+INFO:     192.168.208.1:52800 - "GET /api/battery HTTP/1.1" 200 OK
+INFO:     192.168.208.1:52799 - "GET /api/battery HTTP/1.1" 200 OK
+INFO:     192.168.208.1:52799 - "GET /api/battery HTTP/1.1" 200 OK
+INFO:     192.168.208.1:52800 - "GET /api/battery HTTP/1.1" 200 OK
+INFO:     192.168.208.1:52799 - "GET / HTTP/1.1" 200 OK
+INFO:     connection closed
+INFO:     192.168.208.1:52799 - "GET /css/base.css HTTP/1.1" 200 OK
+INFO:     192.168.208.1:52951 - "GET /js/api.js HTTP/1.1" 200 OK
+INFO:     192.168.208.1:52950 - "GET /js/base.js HTTP/1.1" 200 OK
+INFO:     192.168.208.1:53683 - "GET /css/index.css HTTP/1.1" 200 OK
+INFO:     192.168.208.1:60503 - "GET /js/battery.js HTTP/1.1" 200 OK
+INFO:     192.168.208.1:60504 - "GET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1" 404 Not Found
+INFO:     192.168.208.1:60504 - "GET /api/battery HTTP/1.1" 200 OK
+INFO:     192.168.208.1:53683 - "GET /api/config HTTP/1.1" 200 OK
+INFO:     192.168.208.1:52799 - "GET /api/camera/status HTTP/1.1" 200 OK
+INFO:     192.168.208.1:60504 - "GET /api/companion/status HTTP/1.1" 200 OK
+INFO:     192.168.208.1:53683 - "GET /api/prompts/active HTTP/1.1" 200 OK
+INFO:     192.168.208.1:52951 - "GET /favicon.ico HTTP/1.1" 404 Not Found
+INFO:     ('192.168.208.1', 61166) - "WebSocket /ws" [accepted]
+INFO:     connection open
+INFO:     192.168.208.1:52951 - "GET /api/battery HTTP/1.1" 200 OK
+INFO:     192.168.208.1:52800 - "GET /api/battery HTTP/1.1" 200 OK
+2026-07-26 03:22:25,531 INFO cockpit.camera: ICE candidate buffered (1 pending)
+INFO:     192.168.208.1:52799 - "POST /api/camera/webrtc/ice HTTP/1.1" 200 OK
+2026-07-26 03:22:25,534 INFO cockpit.camera.janus: Janus session created: 6660191623375332
+2026-07-26 03:22:25,536 INFO cockpit.camera.janus: Attached to janus.plugin.streaming: handle=5354801378405822
+2026-07-26 03:22:25,536 INFO cockpit.camera: WebRTC: browser H.264, mountpoint 2
+2026-07-26 03:22:25,538 INFO cockpit.camera.janus: Watch sent, polling for SDP offer event...
+2026-07-26 03:22:25,591 INFO cockpit.camera.janus: Got SDP offer from Janus
+2026-07-26 03:22:25,591 INFO cockpit.camera: Returning Janus SDP offer to browser
+INFO:     192.168.208.1:52951 - "POST /api/camera/webrtc/offer HTTP/1.1" 200 OK
+2026-07-26 03:22:25,640 INFO cockpit.camera: ICE candidate buffered (1 pending)
+INFO:     192.168.208.1:52799 - "POST /api/camera/webrtc/ice HTTP/1.1" 200 OK
+2026-07-26 03:22:25,681 INFO cockpit.camera.janus: Start sent to Janus
+2026-07-26 03:22:25,684 INFO cockpit.camera.janus: Trickle sent: ack
+2026-07-26 03:22:25,684 INFO cockpit.camera: WebRTC stream started
+INFO:     192.168.208.1:52951 - "POST /api/camera/webrtc/answer HTTP/1.1" 200 OK
+2026-07-26 03:22:25,877 INFO cockpit.camera: ICE candidate buffered (1 pending)
+INFO:     192.168.208.1:52951 - "POST /api/camera/webrtc/ice HTTP/1.1" 200 OK
+INFO:     192.168.208.1:52951 - "GET /api/battery HTTP/1.1" 200 OK
+INFO:     192.168.208.1:52951 - "GET /api/battery HTTP/1.1" 200 OK
+INFO:     192.168.208.1:52800 - "GET /api/battery HTTP/1.1" 200 OK
+INFO:     192.168.208.1:52951 - "GET /api/battery HTTP/1.1" 200 OK
+
+bash start-janus.sh
+Starting Janus 1.4.1...
+HTTP API: http://127.0.0.1:8088/janus
+WebSocket: ws://127.0.0.1:8188
+Configs: /home/user3464675696598985/webrtc/kuzmich-cockpit/janus-conf
+Plugins: /home/user3464675696598985/webrtc/kuzmich-cockpit/janus-local/lib/janus/plugins
+Janus version: 1401 (1.4.1)
+Janus commit: 85304a7a4bdb2719583ad53ae04130a8273dba6a
+Compiled on:  Sun Jul 26 02:42:09 MSK 2026
+
+Logger plugins folder: /home/user3464675696598985/webrtc/kuzmich-cockpit/janus-local/lib/janus/loggers
+[WARN]  Couldn't access logger plugins folder...
+---------------------------------------------------
+  Starting Meetecho Janus (WebRTC Server) v1.4.1
+---------------------------------------------------
+
+Checking command line arguments...
+Debug/log level is 4
+Debug/log timestamps are disabled
+Debug/log colors are disabled
+Using 192.168.211.244 as local IP...
+Token based authentication disabled
+Initializing recorder code
+RTP port range: 20000 -- 40000
+Initializing ICE stuff (Full mode, ICE-TCP candidates disabled, full-trickle, IPv6 support disabled)
+ICE port range: 20000-40000
+STUN server to use: stun.l.google.com:19302
+  >> 74.125.250.129:19302 (IPv4)
+Testing STUN server: message is of 20 bytes
+  >> Our public address is 185.117.88.9
+TURN REST API backend: (disabled)
+Crypto: OpenSSL >= 1.1.0
+No cert/key specified, autogenerating some...
+Fingerprint of our certificate: 4B:D9:F4:EA:86:26:4A:A3:75:05:DE:DE:F4:C4:1D:DD:9D:75:46:ED:86:7C:A7:57:1E:45:2B:8D:F4:8C:FE:81
+[WARN] Data Channels support not compiled
+Sessions watchdog started
+Joining Janus requests handler thread
+Event handlers support disabled
+Plugins folder: /home/user3464675696598985/webrtc/kuzmich-cockpit/janus-local/lib/janus/plugins
+Loading plugin 'libjanus_videoroom.so'...
+[ERR] [config.c:janus_config_parse:191]   -- Error reading configuration file 'janus.plugin.videoroom.jcfg'... error 2 (No such file or directory)
+[WARN] Couldn't find .jcfg configuration file (janus.plugin.videoroom), trying .cfg
+[ERR] [config.c:janus_config_parse:191]   -- Error reading configuration file 'janus.plugin.videoroom.cfg'... error 2 (No such file or directory)
+JANUS VideoRoom plugin initialized!
+Loading plugin 'libjanus_echotest.so'...
+[ERR] [config.c:janus_config_parse:191]   -- Error reading configuration file 'janus.plugin.echotest.jcfg'... error 2 (No such file or directory)
+[WARN] Couldn't find .jcfg configuration file (janus.plugin.echotest), trying .cfg
+[ERR] [config.c:janus_config_parse:191]   -- Error reading configuration file 'janus.plugin.echotest.cfg'... error 2 (No such file or directory)
+JANUS EchoTest plugin initialized!
+Loading plugin 'libjanus_streaming.so'...
+JANUS Streaming plugin initialized!
+Transport plugins folder: ../janus-local/lib/janus/transports
+Loading transport plugin 'libjanus_http.so'...
+Restricting Access-Control-Allow-Origin to '*'
+HTTP transport timer started
+HTTP webserver started (port 8088, /janus path listener)...
+JANUS REST (HTTP/HTTPS) transport plugin initialized!
+Loading transport plugin 'libjanus_websockets.so'...
+libwebsockets logging: 0
+Websockets server started (port 8188)...
+JANUS WebSockets transport plugin initialized!
+WebSockets thread started
+[h265-stream] New video stream! (#0, ssrc=4235572043, index 0)
+[h264-stream] New video stream! (#0, ssrc=3353969086, index 0)
+Creating new session: 6660191623375332; 0x7b1e0c001c00
+Creating new handle in session 6660191623375332: 5354801378405822; 0x7b1e0c001c00 0x7b1e0c002ff0
+[5354801378405822] Creating ICE agent (ICE Full mode, controlling)
+[WARN] [5354801378405822] Error resolving mDNS address (6b225f9f-8982-4385-b34d-41f2757cfec9.local): Error resolving “6b225f9f-8982-4385-b34d-41f2757cfec9.local”: Name or service not known
+Timeout expired for session 6660191623375332...

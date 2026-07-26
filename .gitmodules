@@ -1,6 +1,3 @@
 [submodule "kuzmich-cockpit/gstwebsocketsink"]
 	path = kuzmich-cockpit/gstwebsocketsink
 	url = https://github.com/OneToThreeCreator/gstwebsocketsink.git
-[submodule "kuzmich-cockpit/janus"]
-	path = kuzmich-cockpit/janus
-	url = https://github.com/meetecho/janus-gateway.git

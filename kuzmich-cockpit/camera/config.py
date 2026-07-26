@@ -54,13 +54,23 @@ class CameraConfig:
     gst_encoder_h264: str = _env("CAM_GST_ENCODER_H264", "nvv4l2h264enc")
     gst_bitrate_h264: int = _env_int("CAM_GST_BITRATE_H264", 6000)  # kbps
 
-    # --- WebRTC (Janus SFU) ---
+    # --- WebRTC (LiveKit SFU) ---
     webrtc_stun_url: str = _env("CAM_WEBRTC_STUN", "stun:stun.l.google.com:19302")
-    janus_http_url: str = _env("CAM_JANUS_HTTP", "http://127.0.0.1:8088")
-    janus_ws_url: str = _env("CAM_JANUS_WS", "ws://127.0.0.1:8188")
-    janus_room_id: int = _env_int("CAM_JANUS_ROOM", 1234)
-    janus_rtp_h265_port: int = _env_int("CAM_JANUS_RTP_H265_PORT", 5004)  # H.265 RTP port
-    janus_rtp_h264_port: int = _env_int("CAM_JANUS_RTP_H264_PORT", 5006)  # H.264 RTP port
+    livekit_url: str = _env("CAM_LIVEKIT_URL", "ws://127.0.0.1:7880")
+    livekit_api_key: str = _env("CAM_LIVEKIT_API_KEY", "devkey")
+    livekit_api_secret: str = _env("CAM_LIVEKIT_API_SECRET", "secret")
+    livekit_room: str = _env("CAM_LIVEKIT_ROOM", "g1-camera")
+    
+    # --- WHIP endpoint for LiveKit (используется whipsender.py) ---
+    livekit_whip_url: str = _env("CAM_LIVEKIT_WHIP_URL", "http://127.0.0.1:7880/whip/ingress/test")
+    
+    # --- STUN server for WebRTC (используется whipsender.py) ---
+    # Формат: stun://stun.l.google.com:19302 (GStreamer формат)
+    webrtc_stun_gst: str = _env("CAM_WEBRTC_STUN_GST", "stun://stun.l.google.com:19302")
+
+    # --- GStreamer RTP (для whipsender → LiveKit) ---
+    rtp_h265_port: int = _env_int("CAM_RTP_H265_PORT", 5004)
+    rtp_h264_port: int = _env_int("CAM_RTP_H264_PORT", 5006)
 
     # --- GStreamer WebSocket endpoints (сервятся GStreamer напрямую) ---
     ws_raw_bgr_port: int = _env_int("CAM_WS_RAW_PORT", 8082)    # Raw BGR для YOLO

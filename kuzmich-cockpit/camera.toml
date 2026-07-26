@@ -59,13 +59,13 @@ enabled = false
 [webrtc]
 stun_url = "stun:stun.l.google.com:19302"
 
-# Janus SFU — WebRTC multi-viewer
-[janus]
-http_url = "http://127.0.0.1:8088"   # Janus HTTP API
-ws_url = "ws://127.0.0.1:8188"       # Janus WebSocket API
-room_id = 1234                        # VideoRoom ID for camera stream
-rtp_h265_port = 5004                  # UDP port for GStreamer H.265 RTP → Janus
-rtp_h264_port = 5006                  # UDP port for GStreamer H.264 RTP → Janus
+# LiveKit SFU — WebRTC multi-viewer
+[livekit]
+url = "ws://127.0.0.1:7880"           # LiveKit WebSocket
+api_key = "devkey"                     # API key
+api_secret = "secret"                  # API secret
+room = "g1-camera"                     # Room name
+whip_url = "http://127.0.0.1:7880/whip/ingress/test"  # WHIP endpoint
 
 # GStreamer WebSocket endpoints (сервятся GStreamer напрямую)
 [websocket]
