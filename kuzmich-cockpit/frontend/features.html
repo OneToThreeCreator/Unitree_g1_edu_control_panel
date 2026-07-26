@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Кузьмич · Доп. функции</title>
+<link rel="stylesheet" href="css/base.css">
+<link rel="stylesheet" href="css/features.css">
+</head>
+<body>
+<header>
+  <h1>🤖 КУЗЬМИЧ — Функции</h1>
+  <span id="batt" class="badge batt">⚡ --%</span>
+  <span id="dry" class="badge dry" style="display:none">DRY-RUN</span>
+  <div class="spacer"></div>
+  <a href="/" class="back-btn">← Управление</a>
+</header>
+
+<main>
+  <!-- Руки -->
+  <div class="card">
+    <h2>Руки (позы)</h2>
+    <div class="btns" id="armBtns"></div>
+    <div id="lockArm" class="locknote"></div>
+  </div>
+
+  <!-- Кисть -->
+  <div class="card">
+    <h2>Кисть Inspire E2</h2>
+    <div class="btns" id="handBtns"></div>
+  </div>
+
+  <!-- Голова: глаза -->
+  <div class="card">
+    <h2>Голова — глаза (ESP32)</h2>
+    <div class="btns" id="eyeBtns"></div>
+    <label class="check" style="display:flex;align-items:center;gap:8px;color:var(--dim);font-size:13px;margin:10px 0">
+      <input type="checkbox" id="autoBlink" style="width:auto"> авто-моргание
+    </label>
+    <div class="slider"><label>Лев. глаз</label><input id="eyeL" type="range" min="0" max="180" value="147"><b id="eyeLV">147</b></div>
+    <div class="slider"><label>Прав. глаз</label><input id="eyeR" type="range" min="0" max="180" value="28"><b id="eyeRV">28</b></div>
+    <div class="slider"><label>Скор. серв</label><input id="eyeSpd" type="range" min="1" max="100" value="60"><b id="eyeSpdV">60</b></div>
+    <div class="hint" style="text-align:left">Углы прямые (servo which/angle). Калибровка: L откр 147/закр 46 · R откр 28/закр 127.</div>
+  </div>
+
+  <!-- Голова: LED -->
+  <div class="card">
+    <h2>Голова — подсветка (LED)</h2>
+    <div class="row">
+      <select id="ledAnim" style="flex:1"></select>
+      <input type="color" id="ledColor" value="#ff00ff" style="width:44px;height:38px;padding:2px;background:#0f1418;border:1px solid var(--line);border-radius:7px">
+    </div>
+    <div class="slider"><label>Яркость</label><input id="ledBri" type="range" min="0" max="255" value="80"><b id="ledBriV">80</b></div>
+    <div class="slider"><label>Скорость</label><input id="ledSpd" type="range" min="10" max="500" value="30"><b id="ledSpdV">30</b></div>
+  </div>
+
+  <!-- Голос -->
+  <div class="card">
+    <h2>Голос робота (TTS)</h2>
+    <textarea id="ttsText" rows="2">Кузьмич на связи.</textarea>
+    <button class="act wide" id="ttsBtn" style="margin-top:8px">Сказать вслух</button>
+  </div>
+
+  <!-- ИИ -->
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <h2 style="margin:0">Диалог с ИИ</h2>
+      <div style="display:flex;gap:6px;align-items:center">
+        <a id="promptStatusBtn" href="/prompts.html" style="color:var(--txt);text-decoration:none;background:var(--panel2);padding:4px 10px;border-radius:6px;border:1px solid var(--line);font-size:12px;display:inline-flex;align-items:center;gap:4px">
+          <span id="promptNameDisplay">промт</span>
+        </a>
+        <a id="configStatusBtn" href="/config.html" style="color:var(--txt);text-decoration:none;background:var(--panel2);padding:4px 10px;border-radius:6px;border:1px solid var(--line);font-size:12px">настр.</a>
+      </div>
+    </div>
+    <div class="row" style="margin-bottom:8px">
+      <div class="seg" id="aiMode">
+        <button data-mode="off" class="active">Выкл</button>
+        <button data-mode="internal">Внутренняя</button>
+        <button data-mode="external">Внешняя</button>
+      </div>
+      <span id="aiStatusText" style="font-size:12px;color:var(--dim);margin-left:8px"></span>
+    </div>
+    <div class="chat" id="chat"></div>
+    <div class="row">
+      <input id="aiText" type="text" placeholder="Спросить…" disabled>
+      <button class="act" id="aiBtn" disabled>➤</button>
+    </div>
+  </div>
+</main>
+
+<!-- Bottom Navigation -->
+<nav class="bottom-nav">
+  <a href="/">
+    <span class="nav-icon">🎮</span>
+    <span class="nav-label">Управление</span>
+  </a>
+  <a href="/features.html" class="active">
+    <span class="nav-icon">🤖</span>
+    <span class="nav-label">Функции</span>
+  </a>
+  <a href="/files.html">
+    <span class="nav-icon">📁</span>
+    <span class="nav-label">Файлы</span>
+  </a>
+  <a href="/prompts.html">
+    <span class="nav-icon">🧠</span>
+    <span class="nav-label">Промты</span>
+  </a>
+  <a href="/config.html">
+    <span class="nav-icon">⚙</span>
+    <span class="nav-label">Настройки</span>
+  </a>
+</nav>
+
+<footer id="log"></footer>
+
+<script src="js/base.js"></script>
+<script src="js/api.js"></script>
+<script src="js/battery.js"></script>
+<script>
+'use strict';
+let ws=null, mode="manual", estop=false, aiMode="off", lastAiMode="internal";
+
+function connect(){
+  ws=new WebSocket((location.protocol==="https:"?"wss":"ws")+"://"+location.host+"/ws");
+  ws.onclose=()=>setTimeout(connect,1500);
+  ws.onmessage=e=>handle(JSON.parse(e.data));
+}
+function send(o){ if(ws&&ws.readyState===1) ws.send(JSON.stringify(o)); }
+
+function handle(m){
+  if(m.t==="hello"){ applyState(m); if(m.companion) applyCompanion(m.companion); }
+  else if(m.t==="telemetry"){ applyState(m); if(m.companion) applyCompanion(m.companion); }
+  else if(m.t==="event"){ logEvent(m); }
+  else if(m.t==="ai_reply"){ addMsg("bot",m.text); }
+}
+function applyState(m){
+  if(typeof m.mode!=="undefined") mode=m.mode;
+  if(typeof m.estop!=="undefined") estop=m.estop;
+  refreshLocks();
+}
+
+function motionBlocked(){ return estop || mode==="teleop"; }
+function refreshLocks(){
+  const why = estop ? "Активен аварийный стоп" : (mode==="teleop"?"Активна VR-телеоперация":"");
+  $("#lockArm").textContent=why;
+  document.querySelectorAll("#armBtns button,#handBtns button").forEach(b=>b.disabled=motionBlocked());
+}
+
+function buildButtons(){
+  API.getConfig().then(cfg=>{
+    const arm=$("#armBtns"); arm.innerHTML="";
+    cfg.arm_actions.forEach(a=>{
+      const b=document.createElement("button"); b.className="act"; b.textContent=a;
+      b.onclick=()=>API.armCommand(a).catch(()=>{}); arm.appendChild(b);
+    });
+    const hand=$("#handBtns"); hand.innerHTML="";
+    Object.keys(cfg.hand_presets).forEach(p=>{
+      const b=document.createElement("button"); b.className="act"; b.textContent=p;
+      b.onclick=()=>API.handCommand({preset:p}).catch(()=>{}); hand.appendChild(b);
+    });
+    const eye=$("#eyeBtns"); eye.innerHTML="";
+    Object.entries(cfg.eye_macros).forEach(([label,macro])=>{
+      const b=document.createElement("button"); b.className="act"; b.textContent=label;
+      b.onclick=()=>headCmd({cmd:"servo_macro",name:macro}); eye.appendChild(b);
+    });
+    const anim=$("#ledAnim"); anim.innerHTML="";
+    cfg.led_animations.forEach(a=>{const o=document.createElement("option");o.value=a;o.textContent=a;anim.appendChild(o);});
+    refreshLocks();
+  }).catch(()=>{});
+}
+
+function headCmd(payload){ API.headCommand(payload).catch(()=>{}); }
+
+$("#ledAnim").onchange=e=>headCmd({cmd:"led_animation",name:e.target.value});
+$("#ledColor").onchange=e=>headCmd({cmd:"led_color",color:e.target.value});
+$("#ledBri").oninput=e=>$("#ledBriV").textContent=e.target.value;
+$("#ledBri").onchange=e=>headCmd({cmd:"led_brightness",value:parseInt(e.target.value)});
+$("#ledSpd").oninput=e=>$("#ledSpdV").textContent=e.target.value;
+$("#ledSpd").onchange=e=>headCmd({cmd:"led_speed",value:parseInt(e.target.value)});
+$("#autoBlink").onchange=e=>headCmd({cmd:"auto_blink",enabled:e.target.checked,interval:3});
+const sendEyeL=throttle(v=>headCmd({cmd:"servo",which:1,angle:v}),80);
+const sendEyeR=throttle(v=>headCmd({cmd:"servo",which:2,angle:v}),80);
+$("#eyeL").oninput=e=>{$("#eyeLV").textContent=e.target.value;sendEyeL(parseInt(e.target.value));};
+$("#eyeR").oninput=e=>{$("#eyeRV").textContent=e.target.value;sendEyeR(parseInt(e.target.value));};
+$("#eyeSpd").oninput=e=>$("#eyeSpdV").textContent=e.target.value;
+$("#eyeSpd").onchange=e=>headCmd({cmd:"servo_speed",value:parseInt(e.target.value)});
+
+$("#ttsBtn").onclick=async()=>{ const t=$("#ttsText").value.trim(); if(t)try{await API.ttsCommand(t);}catch(e){}};
+
+function applyCompanion(c){
+  aiMode = c.mode || "off";
+  if(aiMode !== "off") lastAiMode = aiMode;
+  document.querySelectorAll("#aiMode button").forEach(b=>b.classList.toggle("active",b.dataset.mode===aiMode));
+  const active = aiMode !== "off";
+  $("#aiText").disabled = !active;
+  $("#aiBtn").disabled = !active;
+  $("#aiText").placeholder = active ? "Спросить…" : "ИИ выключен…";
+  const cfgName = active ? ((c.last_config && c.last_config[aiMode]) || c.config || "") : "";
+  const statusText = active ? (aiMode==="internal"?"внутренняя ИИ":"внешняя ИИ") + (cfgName ? " · "+cfgName : "") : "";
+  $("#aiStatusText").textContent = statusText;
+  $("#configStatusBtn").textContent = active && cfgName ? cfgName : "настр.";
+}
+document.querySelectorAll("#aiMode button").forEach(b=>b.onclick=async()=>{
+  const newMode = b.dataset.mode;
+  try {
+    const d = await API.companionSetMode(newMode, null);
+    applyCompanion(d);
+    if(!d.ok) logEvent({t:"event",level:"err",msg:d.message,ts:Date.now()/1000});
+  } catch(e) {
+    logEvent({t:"event",level:"err",msg:"Ошибка переключения ИИ: "+e,ts:Date.now()/1000});
+  }
+});
+
+async function askAI(){ const t=$("#aiText").value.trim(); if(!t||aiMode==="off")return; addMsg("me",t); $("#aiText").value="";
+  try { const d = await API.aiCommand(t, aiMode); if(d.ok) addMsg("bot",d.text); }
+  catch(e) { logEvent({t:"event",level:"err",msg:"ИИ: "+e,ts:Date.now()/1000}); }
+}
+$("#aiBtn").onclick=askAI;
+$("#aiText").addEventListener("keydown",e=>{if(e.key==="Enter")askAI();});
+function addMsg(who,text){ const d=document.createElement("div"); d.className="msg "+who; d.textContent=text; $("#chat").appendChild(d); $("#chat").scrollTop=1e9; }
+
+async function updatePromptStatus() {
+  try {
+    const data = await API.getActivePrompt();
+    const name = data.active;
+    document.getElementById('promptNameDisplay').textContent = name || 'не выбран';
+  } catch (e) {}
+}
+
+function logEvent(m){ const el=document.createElement("div"); el.className="log "+m.level;
+  const ts=new Date((m.ts||Date.now()/1000)*1000).toLocaleTimeString();
+  el.innerHTML=`<span class="ts">${ts}</span> <b>${m.level.toUpperCase()}</b> ${escapeHtml(m.msg)}`;
+  const log=$("#log"); log.appendChild(el); log.scrollTop=1e9;
+  while(log.children.length>150) log.removeChild(log.firstChild);
+}
+
+(async function() {
+  buildButtons();
+  connect();
+  updatePromptStatus();
+})();
+</script>
+</body>
+</html>

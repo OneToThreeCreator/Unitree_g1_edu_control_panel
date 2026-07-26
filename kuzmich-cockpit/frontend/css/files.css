@@ -1,6 +1,10 @@
 main{flex:1;display:flex;gap:20px;padding:20px;overflow:hidden}
-.sidebar{width:260px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:10px;overflow:hidden}
-.sidebar h2{font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--dim);margin:0}
+
+/* File browser */
+.file-browser{
+  width:300px;background:var(--panel);border:1px solid var(--line);border-radius:10px;
+  padding:12px;display:flex;flex-direction:column;gap:10px;overflow:hidden;
+}
 .breadcrumb{display:flex;flex-wrap:wrap;gap:4px;align-items:center;font-size:12px;padding:6px 8px;background:var(--panel2);border-radius:6px;min-height:32px}
 .breadcrumb span{color:var(--dim);cursor:pointer}
 .breadcrumb span:hover{color:var(--accent)}
@@ -17,11 +21,14 @@ main{flex:1;display:flex;gap:20px;padding:20px;overflow:hidden}
 .file-item.is-dir .icon{color:var(--warn)}
 .file-item.go-up{opacity:.7;font-style:italic}
 .file-item.is-file .icon{color:var(--dim)}
-.sidebar-actions{display:flex;gap:6px;flex-wrap:wrap;padding-top:8px;border-top:1px solid var(--line)}
-.sidebar-actions button{flex:1;min-width:0;padding:6px 4px;font-size:11px;border:1px solid var(--line);border-radius:6px;background:var(--panel2);color:var(--txt);cursor:pointer;font:inherit;text-align:center}
-.sidebar-actions button:hover{border-color:var(--accent)}
+.file-actions{display:flex;gap:6px;flex-wrap:wrap;padding-top:8px;border-top:1px solid var(--line)}
+.file-actions button{flex:1;min-width:0;padding:6px 4px;font-size:11px;border:1px solid var(--line);border-radius:6px;background:var(--panel2);color:var(--txt);cursor:pointer;font:inherit;text-align:center}
+.file-actions button:hover{border-color:var(--accent)}
+
+/* Editor */
 .editor{flex:1;display:flex;flex-direction:column;gap:12px;overflow:hidden}
 .editor-header{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.editor-header .back-btn{display:none}
 .file-name-input{flex:1;background:#0f1418;color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:6px 10px;font:inherit;font-size:14px;min-width:120px}
 .file-name-input:focus{border-color:var(--accent);outline:none}
 .editor-header .file-meta{font-size:12px;color:var(--dim)}
@@ -39,3 +46,35 @@ main{flex:1;display:flex;gap:20px;padding:20px;overflow:hidden}
 .actions button.danger{background:var(--err);color:#fff;border-color:var(--err)}
 .actions button:disabled{opacity:.4;cursor:not-allowed}
 .upload-input{display:none}
+
+/* ===== Mobile ===== */
+@media(max-width:768px){
+  main{
+    flex-direction:column;gap:0;padding:0;
+    padding-bottom:var(--nav-h);
+  }
+
+  /* File browser: fullscreen */
+  .file-browser{
+    width:100%;border-radius:0;border:0;
+    padding:8px;flex:1;min-height:0;
+  }
+
+  /* Editor: fullscreen */
+  .editor{
+    position:fixed;top:0;left:0;right:0;bottom:0;z-index:100;
+    background:var(--bg);
+    padding:8px;padding-top:calc(8px + env(safe-area-inset-top, 0px));
+    padding-bottom:var(--nav-h);
+    border-radius:0;
+    display:none;flex-direction:column;gap:8px;
+  }
+  .editor.visible{display:flex}
+
+  .editor-header{display:flex!important;gap:8px}
+  .editor-header .back-btn{display:inline-flex}
+  .editor-header .file-name-input{min-width:0}
+  .editor-area{min-height:0;flex:1;font-size:14px}
+  .actions{flex-wrap:wrap}
+  .actions button{flex:1;min-width:0;text-align:center;padding:10px 8px}
+}

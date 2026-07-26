@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Редактор конфигурации ИИ</title>
   <link rel="stylesheet" href="css/base.css">
   <link rel="stylesheet" href="css/config.css">
@@ -16,17 +16,21 @@
     <button id="tabExternal">Внешняя</button>
   </div>
   <div class="spacer"></div>
-  <a href="/" class="back-btn">← На главную</a>
+  <a href="/" class="back-btn header-link-back">← На главную</a>
 </header>
 <main>
-  <div class="sidebar">
+  <!-- Config list (sidebar on desktop, fullscreen on mobile) -->
+  <div class="sidebar" id="sidebar">
     <h2>Конфиги</h2>
     <div id="configList"></div>
     <div id="status" class="status hidden"></div>
   </div>
+
+  <!-- Editor (fullscreen on mobile) -->
   <div class="editor" id="editorPanel">
     <div class="editor-empty" id="editorEmpty">Выберите конфиг слева или создайте новый</div>
-    <div id="editorTop" style="display:none;gap:10px;align-items:center;margin-bottom:8px">
+    <div id="editorTop" style="display:none;gap:8px;align-items:center;margin-bottom:8px">
+      <button class="back-btn" id="backToList">← Назад</button>
       <label style="font-size:13px;color:var(--dim)">Имя:</label>
       <input id="configNameInput" type="text" style="flex:1;background:#0f1418;color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:6px 10px;font:inherit;font-size:14px" placeholder="имя файла" />
       <span id="dirtyIndicator" style="font-size:13px;color:var(--warn);font-weight:600"></span>
@@ -36,7 +40,7 @@
       <button id="newBtn">Новый</button>
       <button class="primary" id="saveBtn">Сохранить</button>
       <button id="selectBtn">Выбрать</button>
-      <button id="resetBtn">Сбросить все</button>
+      <button id="resetBtn">Сбросить</button>
       <button class="danger" id="deleteBtn">Удалить</button>
       <button id="rawToggle" class="raw-toggle">RAW</button>
       <div class="spacer"></div>
@@ -47,6 +51,30 @@
     </div>
   </div>
 </main>
+
+<!-- Bottom Navigation -->
+<nav class="bottom-nav">
+  <a href="/">
+    <span class="nav-icon">🎮</span>
+    <span class="nav-label">Управление</span>
+  </a>
+  <a href="/features.html">
+    <span class="nav-icon">🤖</span>
+    <span class="nav-label">Функции</span>
+  </a>
+  <a href="/files.html">
+    <span class="nav-icon">📁</span>
+    <span class="nav-label">Файлы</span>
+  </a>
+  <a href="/prompts.html">
+    <span class="nav-icon">🧠</span>
+    <span class="nav-label">Промты</span>
+  </a>
+  <a href="/config.html" class="active">
+    <span class="nav-icon">⚙</span>
+    <span class="nav-label">Настройки</span>
+  </a>
+</nav>
 
 <script src="js/base.js"></script>
 <script src="js/api.js"></script>
@@ -68,6 +96,9 @@
   const rawToggle = $('#rawToggle');
   const statusDiv = $('#status');
   const activeBadge = $('#activeBadge');
+  const sidebar = $('#sidebar');
+  const backToList = $('#backToList');
+  const editorPanel = $('#editorPanel');
 
   let currentMode = 'internal';
   let baseDefaults = {};
@@ -86,10 +117,8 @@
     actionsEl: editorActions
   });
 
-  // Override: content is serialized overrides
   ed.getContent = () => rawMode ? rawTextarea.value : serializeOverride(overrides);
 
-  // Override: dirty = name changed OR overrides changed
   ed.isDirty = () => {
     const nameChanged = configNameInput.value.trim() !== ed.originalName;
     const overridesChanged = JSON.stringify(overrides) !== JSON.stringify(originalOverrides);
@@ -97,7 +126,6 @@
     return nameChanged || overridesChanged;
   };
 
-  // Override: hideEditor for config-specific elements
   ed.hideEditor = () => {
     editorContent.style.display = 'none';
     editorEmpty.style.display = 'flex';
@@ -107,14 +135,28 @@
     rawToggle.textContent = 'RAW';
     dirtyIndicator.textContent = '';
     ed.isNew = false;
+    if (window.innerWidth <= 768) {
+      editorPanel.classList.remove('visible');
+      sidebar.style.display = '';
+    }
   };
 
-  // Override: showEditor for config-specific elements
   ed.showEditor = () => {
     editorEmpty.style.display = 'none';
     editorContent.style.display = 'flex';
     editorActions.style.display = 'flex';
     editorTop.style.display = 'flex';
+    if (window.innerWidth <= 768) {
+      editorPanel.classList.add('visible');
+      sidebar.style.display = 'none';
+    }
+  };
+
+  backToList.onclick = () => {
+    if (ed.isDirty()) {
+      if (!confirm('Есть несохранённые изменения. Продолжить?')) return;
+    }
+    ed.hideEditor();
   };
 
   const EDITABLE = {
@@ -201,28 +243,29 @@
         activeName = stData.last_config && stData.last_config[currentMode] || null;
       } catch(e){}
 
+      // Desktop sidebar
       configList.innerHTML = '';
       if(names.length === 0){
         configList.innerHTML = '<div style="color:var(--dim);font-size:13px;padding:8px">Нет конфигов</div>';
-        return;
+      } else {
+        names.forEach(name => {
+          const div = document.createElement('div');
+          div.className = 'config-item' + (name === ed.current ? ' active' : '');
+          div.textContent = name;
+          if(name === activeName){
+            const badge = document.createElement('span');
+            badge.className = 'badge';
+            badge.textContent = '\u25cf';
+            badge.style.color = 'var(--ok)';
+            div.appendChild(badge);
+          }
+          div.onclick = () => {
+            if(ed.isDirty() && !confirm('Есть несохранённые изменения. Продолжить?')) return;
+            loadConfig(name);
+          };
+          configList.appendChild(div);
+        });
       }
-      names.forEach(name => {
-        const div = document.createElement('div');
-        div.className = 'config-item' + (name === ed.current ? ' active' : '');
-        div.textContent = name;
-        if(name === activeName){
-          const badge = document.createElement('span');
-          badge.className = 'badge';
-          badge.textContent = '\u25cf';
-          badge.style.color = 'var(--ok)';
-          div.appendChild(badge);
-        }
-        div.onclick = () => {
-          if(ed.isDirty() && !confirm('Есть несохранённые изменения. Продолжить?')) return;
-          loadConfig(name);
-        };
-        configList.appendChild(div);
-      });
     } catch(e){ ed.showMsg('Ошибка: ' + e.message, 'err'); }
   }
 

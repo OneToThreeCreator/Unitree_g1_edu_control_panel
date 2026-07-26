@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Редактор системных промтов</title>
   <link rel="stylesheet" href="css/base.css">
   <link rel="stylesheet" href="css/prompts.css">
@@ -12,17 +12,21 @@
   <h1>🧠 Редактор системных промтов</h1>
   <span id="batt" class="badge batt">⚡ --%</span>
   <div class="spacer"></div>
-  <a href="/" class="back-btn">← На главную</a>
+  <a href="/" class="back-btn header-link-back">← На главную</a>
 </header>
 <main>
-  <div class="sidebar">
+  <!-- Prompt list (sidebar on desktop, fullscreen on mobile) -->
+  <div class="sidebar" id="sidebar">
     <h2>Доступные промты</h2>
     <div id="promptList"></div>
     <div id="status" class="status hidden"></div>
     <div class="footnote">Активный промт отмечен ●</div>
   </div>
-  <div class="editor">
+
+  <!-- Editor (fullscreen on mobile) -->
+  <div class="editor" id="editorPanel">
     <div class="top">
+      <button class="back-btn" id="backToList">← Назад</button>
       <div class="name-wrap">
         <label for="promptName">Имя:</label>
         <input id="promptName" placeholder="введите имя файла" />
@@ -33,15 +37,41 @@
     <div class="actions">
       <button class="primary" id="createBtn">➕ Создать новый</button>
       <button class="primary" id="saveBtn">💾 Сохранить</button>
-      <button id="resetBtn">↺ Сбросить изменения</button>
+      <button id="resetBtn">↺ Сбросить</button>
       <button class="danger" id="deleteBtn">🗑 Удалить</button>
-      <button id="selectBtn">⭐ Выбрать активным</button>
+      <button id="selectBtn">⭐ Активным</button>
     </div>
   </div>
 </main>
+
+<!-- Bottom Navigation -->
+<nav class="bottom-nav">
+  <a href="/">
+    <span class="nav-icon">🎮</span>
+    <span class="nav-label">Управление</span>
+  </a>
+  <a href="/features.html">
+    <span class="nav-icon">🤖</span>
+    <span class="nav-label">Функции</span>
+  </a>
+  <a href="/files.html">
+    <span class="nav-icon">📁</span>
+    <span class="nav-label">Файлы</span>
+  </a>
+  <a href="/prompts.html" class="active">
+    <span class="nav-icon">🧠</span>
+    <span class="nav-label">Промты</span>
+  </a>
+  <a href="/config.html">
+    <span class="nav-icon">⚙</span>
+    <span class="nav-label">Настройки</span>
+  </a>
+</nav>
+
 <script src="js/base.js"></script>
 <script src="js/api.js"></script>
 <script src="js/editor.js"></script>
+<script src="js/dropdown.js"></script>
 <script>
 'use strict';
 (function() {
@@ -55,7 +85,9 @@
   const deleteBtn = document.getElementById('deleteBtn');
   const createBtn = document.getElementById('createBtn');
   const resetBtn = document.getElementById('resetBtn');
-  const editorPanel = document.querySelector('.editor');
+  const sidebar = document.getElementById('sidebar');
+  const backToList = document.getElementById('backToList');
+  const editorPanel = document.getElementById('editorPanel');
 
   const ed = new SidebarEditor({
     nameInput, contentArea, dirtyIndicator, statusDiv,
@@ -64,6 +96,40 @@
     emptyEl: null,
     actionsEl: document.querySelector('.actions')
   });
+
+  // Override showEditor for fullscreen on mobile
+  ed.showEditor = () => {
+    document.querySelector('.editor .top').parentElement.style.display = 'flex';
+    document.querySelector('.actions').style.display = 'flex';
+    if (window.innerWidth <= 768) {
+      editorPanel.classList.add('visible');
+      sidebar.style.display = 'none';
+    }
+  };
+
+  // Override hideEditor for fullscreen on mobile
+  ed.hideEditor = () => {
+    document.querySelector('.editor .top').parentElement.style.display = 'none';
+    document.querySelector('.actions').style.display = 'none';
+    ed.current = null;
+    ed.originalName = '';
+    ed.originalContent = '';
+    nameInput.value = '';
+    contentArea.value = '';
+    dirtyIndicator.textContent = '';
+    ed.isNew = false;
+    if (window.innerWidth <= 768) {
+      editorPanel.classList.remove('visible');
+      sidebar.style.display = '';
+    }
+  };
+
+  backToList.onclick = () => {
+    if (ed.isDirty()) {
+      if (!confirm('Есть несохранённые изменения. Продолжить?')) return;
+    }
+    ed.hideEditor();
+  };
 
   async function fetchPrompts() {
     try {
@@ -78,6 +144,7 @@
   async function renderList() {
     const names = await fetchPrompts();
     const active = sessionStorage.getItem('activePrompt');
+
     promptList.innerHTML = '';
     names.forEach(name => {
       const div = document.createElement('div');

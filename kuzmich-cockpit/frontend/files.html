@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Файловый менеджер</title>
   <link rel="stylesheet" href="css/base.css">
   <link rel="stylesheet" href="css/files.css">
@@ -12,28 +12,32 @@
   <h1>📁 ФАЙЛОВЫЙ МЕНЕДЖЕР</h1>
   <span id="batt" class="badge batt">⚡ --%</span>
   <div class="spacer"></div>
-  <a href="/" class="back-btn">← На главную</a>
+  <a href="/" class="back-btn header-link-back">← На главную</a>
 </header>
 <main>
-  <div class="sidebar">
+  <!-- File browser panel -->
+  <div class="file-browser" id="fileBrowser">
     <div class="breadcrumb" id="breadcrumb"></div>
     <div class="file-list" id="fileList"></div>
     <div id="status" class="status hidden"></div>
-    <div class="sidebar-actions">
+    <div class="file-actions">
       <button id="newFileBtn">+ Файл</button>
       <button id="newDirBtn">+ Папка</button>
       <button id="uploadBtn">↑ Загрузить</button>
       <input type="file" id="uploadInput" class="upload-input">
     </div>
   </div>
-  <div class="editor">
+
+  <!-- Editor panel (fullscreen on mobile) -->
+  <div class="editor" id="editorPanel">
     <div class="editor-header" id="editorHeader" style="display:none">
+      <button class="back-btn" id="backToList">← Назад</button>
       <input id="fileNameInput" class="file-name-input" type="text" placeholder="имя файла" />
       <span class="file-meta" id="fileMeta"></span>
       <span id="dirtyIndicator" class="dirty-indicator"></span>
     </div>
     <textarea id="editorArea" class="editor-area" style="display:none" spellcheck="false" placeholder="Содержимое файла…"></textarea>
-    <div class="preview-empty" id="previewEmpty">Выберите файл или создайте новый</div>
+    <div class="preview-empty" id="previewEmpty">Выберите файл</div>
     <div id="runOutput"></div>
     <div class="actions" id="editorActions" style="display:none">
       <button id="saveBtn" class="primary">💾 Сохранить</button>
@@ -43,6 +47,30 @@
     </div>
   </div>
 </main>
+
+<!-- Bottom Navigation -->
+<nav class="bottom-nav">
+  <a href="/">
+    <span class="nav-icon">🎮</span>
+    <span class="nav-label">Управление</span>
+  </a>
+  <a href="/features.html">
+    <span class="nav-icon">🤖</span>
+    <span class="nav-label">Функции</span>
+  </a>
+  <a href="/files.html" class="active">
+    <span class="nav-icon">📁</span>
+    <span class="nav-label">Файлы</span>
+  </a>
+  <a href="/prompts.html">
+    <span class="nav-icon">🧠</span>
+    <span class="nav-label">Промты</span>
+  </a>
+  <a href="/config.html">
+    <span class="nav-icon">⚙</span>
+    <span class="nav-label">Настройки</span>
+  </a>
+</nav>
 
 <script src="js/base.js"></script>
 <script src="js/api.js"></script>
@@ -62,6 +90,9 @@
   const runOutput = $('#runOutput');
   const statusDiv = $('#status');
   const uploadInput = $('#uploadInput');
+  const fileBrowser = $('#fileBrowser');
+  const backToList = $('#backToList');
+  const editorPanel = $('#editorPanel');
 
   let currentPath = '';
   let selectedItem = null;
@@ -77,15 +108,18 @@
     actionsEl: editorActions
   });
 
-  // Override: showEditor for files-specific elements
   ed.showEditor = () => {
     previewEmpty.style.display = 'none';
     editorHeader.style.display = 'flex';
     editorArea.style.display = 'block';
     editorActions.style.display = 'flex';
+    // Mobile: show editor, hide file browser
+    if (window.innerWidth <= 768) {
+      editorPanel.classList.add('visible');
+      fileBrowser.style.display = 'none';
+    }
   };
 
-  // Override: hideEditor for files-specific elements
   ed.hideEditor = () => {
     editorArea.style.display = 'none';
     previewEmpty.style.display = 'flex';
@@ -94,6 +128,18 @@
     runOutput.innerHTML = '';
     dirtyIndicator.textContent = '';
     ed.isNew = false;
+    // Mobile: hide editor, show file browser
+    if (window.innerWidth <= 768) {
+      editorPanel.classList.remove('visible');
+      fileBrowser.style.display = '';
+    }
+  };
+
+  backToList.onclick = () => {
+    if (ed.isDirty()) {
+      if (!confirm('Есть несохранённые изменения. Продолжить?')) return;
+    }
+    ed.hideEditor();
   };
 
   function formatSize(bytes){
@@ -122,7 +168,8 @@
     renderBreadcrumb();
     try {
       const data = await API.listFiles(currentPath);
-      renderFileList(data.items || []);
+      const items = data.items || [];
+      renderFileList(items);
     } catch(e){
       ed.showMsg('Ошибка: ' + e.message, 'err');
       fileList.innerHTML = '';
@@ -308,7 +355,6 @@
     }
   };
 
-  // -------- Старт --------
   loadDir('');
 })();
 </script>

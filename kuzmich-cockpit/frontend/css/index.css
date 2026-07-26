@@ -8,26 +8,39 @@
 #estop.armed{animation:pulse 1s infinite}
 @keyframes pulse{50%{opacity:.55}}
 
-main{flex:1;display:grid;grid-template-columns:minmax(320px,1.2fr) 340px minmax(320px,1fr);gap:12px;padding:12px;overflow:hidden}
-.col{display:flex;flex-direction:column;gap:12px;overflow-y:auto}
+/* Desktop: 3-column grid */
+main{flex:1;display:grid;grid-template-columns:minmax(300px,1.1fr) 300px minmax(300px,1.2fr);gap:12px;padding:12px;overflow:hidden}
+.video-section,.control-section,.col{display:flex;flex-direction:column;gap:12px;overflow-y:auto}
+.desktop-only{display:flex}
+@media(max-width:768px){.desktop-only{display:none!important}}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px}
 .card h2{margin:0 0 10px;font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--dim);font-weight:700}
 .video{background:#000;border-radius:8px;aspect-ratio:16/9;display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative}
 .video img{width:100%;height:100%;object-fit:contain}
+.video video{width:100%;height:100%;object-fit:contain}
 .video .ph{color:var(--dim);font-size:13px;text-align:center;padding:20px}
 .tel{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}
 .tel div{background:var(--panel2);border-radius:6px;padding:8px;text-align:center}
 .tel span{display:block;font-size:11px;color:var(--dim)}
 .tel b{font-size:18px;font-variant-numeric:tabular-nums}
 
-.pad{width:220px;height:220px;margin:6px auto;border-radius:50%;background:radial-gradient(circle,#20293200,#20293244),var(--panel2);border:1px solid var(--line);position:relative;touch-action:none;cursor:grab;overflow:hidden}
-.pad .center-mark{position:absolute;left:50%;top:50%;width:10px;height:10px;border-radius:50%;background:var(--dim);transform:translate(-50%,-50%);opacity:.5;pointer-events:none}
-.pad .stick{position:absolute;left:50%;top:50%;height:4px;width:0;background:linear-gradient(90deg,transparent,var(--accent));transform-origin:0 50%;border-radius:4px;pointer-events:none;opacity:.7}
-.pad .knob{width:66px;height:66px;border-radius:50%;background:var(--accent);position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);box-shadow:0 4px 16px #0008;transition:left .05s linear,top .05s linear,box-shadow .12s;pointer-events:none}
+/* Controls row: joystick + turn side by side */
+.ctrl-row{display:flex;gap:16px;align-items:flex-start;margin-bottom:8px}
+.ctrl-col{flex:1;display:flex;flex-direction:column;align-items:stretch}
+.ctrl-label{font-size:11px;color:var(--dim);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px;text-align:center}
+
+/* 2D Pad */
+.pad{width:150px;height:150px;border-radius:50%;background:radial-gradient(circle,#20293200,#20293244),var(--panel2);border:1px solid var(--line);position:relative;touch-action:none;cursor:grab;overflow:hidden}
+.pad .center-mark{position:absolute;left:50%;top:50%;width:8px;height:8px;border-radius:50%;background:var(--dim);transform:translate(-50%,-50%);opacity:.5;pointer-events:none}
+.pad .stick{position:absolute;left:50%;top:50%;height:3px;width:0;background:linear-gradient(90deg,transparent,var(--accent));transform-origin:0 50%;border-radius:3px;pointer-events:none;opacity:.7}
+.pad .knob{width:48px;height:48px;border-radius:50%;background:var(--accent);position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);box-shadow:0 4px 16px #0008;transition:left .05s linear,top .05s linear,box-shadow .12s;pointer-events:none}
 .pad.active{cursor:grabbing}
 .pad.active .knob{box-shadow:0 0 0 5px rgba(47,157,227,.28),0 6px 22px #000a}
 .pad.dis{opacity:.35;pointer-events:none}
+
 .hint{font-size:12px;color:var(--dim);text-align:center;margin-top:4px}
+
+/* Horizontal turn stick */
 .turn-row{display:flex;align-items:center;gap:8px;margin:8px 0}
 .turn-label{font-size:11px;color:var(--dim);white-space:nowrap}
 .stick-1d{flex:1;height:44px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;position:relative;touch-action:none;cursor:grab;overflow:hidden}
@@ -35,11 +48,11 @@ main{flex:1;display:grid;grid-template-columns:minmax(320px,1.2fr) 340px minmax(
 .stick-1d-knob{width:44px;height:44px;border-radius:50%;background:var(--accent);position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);pointer-events:none;transition:left .05s linear,box-shadow .12s}
 .stick-1d.active .stick-1d-knob{box-shadow:0 0 0 5px rgba(47,157,227,.28),0 6px 22px #000a}
 .stick-1d.dis{opacity:.35;pointer-events:none}
+
 .slider{display:flex;align-items:center;gap:10px;margin:8px 0}
 .slider label{font-size:12px;color:var(--dim);width:64px}
 .slider input{flex:1}
 .slider b{width:44px;text-align:right;font-variant-numeric:tabular-nums;font-size:13px}
-
 .btns{display:flex;flex-wrap:wrap;gap:8px}
 button.act{background:var(--panel2);color:var(--txt);border:1px solid var(--line);border-radius:7px;padding:9px 12px;cursor:pointer;font:inherit;font-size:13px}
 button.act:hover{border-color:var(--accent)}
@@ -54,7 +67,6 @@ textarea,input[type=text]{width:100%;background:#0f1418;color:var(--txt);border:
 .msg{padding:7px 10px;border-radius:8px;font-size:13px;max-width:85%}
 .msg.me{background:var(--accent);color:#fff;align-self:flex-end}
 .msg.bot{background:var(--panel2);align-self:flex-start}
-
 footer{height:132px;background:var(--panel);border-top:1px solid var(--line);padding:8px 12px;overflow-y:auto;font-size:12px;font-family:ui-monospace,Menlo,Consolas,monospace}
 .log{padding:2px 0;color:var(--dim)}
 .log .ts{color:#5b6875}
@@ -64,17 +76,12 @@ footer{height:132px;background:var(--panel);border-top:1px solid var(--line);pad
 /* Video header & camera controls */
 .video-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
 .video-header h2{margin:0}
-.video-controls{display:flex;align-items:center;gap:8px}
-
-/* Camera status badge */
 .cam-status{font-size:11px;padding:3px 8px;border-radius:10px;background:var(--panel2);border:1px solid var(--line)}
 .cam-status.offline{color:var(--dim)}
 .cam-status.live{color:var(--ok);border-color:var(--ok)}
 .cam-status.connecting{color:var(--warn)}
 .cam-status.error{color:var(--err)}
-
-/* Camera controls */
-.cam-controls-row{display:flex;align-items:center;gap:16px;margin:10px 0 4px}
+.cam-controls-row{display:flex;align-items:center;gap:16px;margin:10px 0 4px;flex-wrap:wrap}
 .server-toggle-row{display:flex;align-items:center;gap:8px}
 .server-toggle-row span{font-size:12px;color:var(--dim);font-weight:600}
 .cam-toggle-row{display:flex;align-items:center;gap:8px}
@@ -86,5 +93,38 @@ footer{height:132px;background:var(--panel);border-top:1px solid var(--line);pad
 .switch input:checked+.slider::before{transform:translateX(18px);background:#fff}
 #camLabel{font-size:13px;color:var(--dim)}
 
-/* Video element */
-.video video{width:100%;height:100%;object-fit:contain}
+/* ===== Mobile ===== */
+@media(max-width:768px){
+  main{
+    grid-template-columns:1fr;
+    gap:8px;padding:8px;
+    padding-bottom:calc(var(--nav-h) + 8px);
+  }
+  .video-section,.control-section{overflow:visible}
+
+  /* Side-by-side joysticks */
+  .ctrl-row{gap:10px}
+  .pad{width:130px;height:130px}
+  .pad .knob{width:42px;height:42px}
+  .stick-1d{height:36px}
+  .stick-1d-knob{width:36px;height:36px}
+
+  .tel{grid-template-columns:repeat(3,1fr);gap:4px}
+  .tel div{padding:6px}
+  .tel b{font-size:14px}
+  .cam-controls-row{flex-direction:column;gap:8px}
+  .slider label{width:50px;font-size:11px}
+  footer{height:80px}
+}
+
+@media(max-width:400px){
+  header{gap:6px;padding:6px 8px}
+  header h1{font-size:13px}
+  .badge{font-size:10px;padding:2px 6px}
+  .modes button{padding:6px 10px;font-size:12px}
+  #estop{padding:8px 12px;font-size:13px}
+  .pad{width:110px;height:110px}
+  .pad .knob{width:36px;height:36px}
+  .stick-1d{height:32px}
+  .stick-1d-knob{width:32px;height:32px}
+}

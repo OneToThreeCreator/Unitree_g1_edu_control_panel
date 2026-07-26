@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Кузьмич · Единый пульт</title>
 <link rel="stylesheet" href="css/base.css">
 <link rel="stylesheet" href="css/index.css">
@@ -12,27 +12,28 @@
   <h1>🤖 КУЗЬМИЧ</h1>
   <span class="badge"><span id="conn" class="dot"></span> <span id="connt">нет связи</span></span>
   <span id="batt" class="badge batt">⚡ --%</span>
-  <span id="dry" class="badge dry" style="display:none">DRY-RUN (без робота)</span>
-  <a href="/prompts.html" class="back-btn" style="margin-left:10px">Промты ИИ</a>
-  <a href="/config.html" class="back-btn">Конфигурация ИИ</a>
-  <a href="/files.html" class="back-btn">Файлы</a>
+  <span id="dry" class="badge dry" style="display:none">DRY-RUN</span>
+  <div class="header-links">
+    <a href="/features.html" class="back-btn">Доп. функции</a>
+    <a href="/files.html" class="back-btn">Файлы</a>
+    <a href="/prompts.html" class="back-btn">Промты</a>
+    <a href="/config.html" class="back-btn">Настройки</a>
+  </div>
   <div class="spacer"></div>
   <div class="modes">
-    <button id="mManual" class="active">Ручной пульт</button>
-    <button id="mTeleop">VR-телеоп</button>
+    <button id="mManual" class="active">Ручной</button>
+    <button id="mTeleop">Телеоп</button>
   </div>
   <button id="estop">СТОП ⛔</button>
 </header>
 
 <main>
-  <!-- ЛЕВО: видео + телеметрия -->
-  <div class="col">
+  <!-- Видео -->
+  <div class="video-section">
     <div class="card">
       <div class="video-header">
         <h2>Видео оператора</h2>
-        <div class="video-controls">
-          <span id="camStatus" class="cam-status offline">● Offline</span>
-        </div>
+        <span id="camStatus" class="cam-status offline">● Offline</span>
       </div>
       <div class="video">
         <video id="feedVideo" autoplay playsinline muted style="display:none"></video>
@@ -45,7 +46,7 @@
             <input type="checkbox" id="camServerToggle">
             <span class="slider"></span>
           </label>
-          <span id="camServerLabel">Camera Share Server: OFF</span>
+          <span id="camServerLabel">Camera Server: OFF</span>
         </div>
         <div class="cam-toggle-row">
           <label class="switch">
@@ -56,23 +57,27 @@
         </div>
       </div>
       <div class="tel">
-        <div><span>vx (вперёд)</span><b id="tvx">0.00</b></div>
-        <div><span>vy (вбок)</span><b id="tvy">0.00</b></div>
-        <div><span>wz (поворот)</span><b id="twz">0.00</b></div>
+        <div><span>vx</span><b id="tvx">0.00</b></div>
+        <div><span>vy</span><b id="tvy">0.00</b></div>
+        <div><span>wz</span><b id="twz">0.00</b></div>
       </div>
     </div>
   </div>
 
-  <!-- ЦЕНТР: движение -->
-  <div class="col">
+  <!-- Управление -->
+  <div class="control-section">
     <div class="card">
-      <h2>Движение</h2>
-      <div id="pad" class="pad"><div class="stick"></div><div class="center-mark"></div><div class="knob"></div></div>
-      <div class="hint">Джойстик: вперёд/назад + вбок · Поворот: стик ниже · Пробел — стоп</div>
-      <div class="turn-row">
-        <label class="turn-label">← поворот</label>
-        <div id="turnStick" class="stick-1d"><div class="stick-1d-knob"></div></div>
-        <label class="turn-label">поворот →</label>
+      <div class="ctrl-row">
+        <div class="ctrl-col">
+          <div class="ctrl-label">Движение</div>
+          <div id="pad" class="pad"><div class="stick"></div><div class="center-mark"></div><div class="knob"></div></div>
+        </div>
+        <div class="ctrl-col">
+          <div class="ctrl-label">Поворот</div>
+          <div class="turn-row">
+            <div id="turnStick" class="stick-1d"><div class="stick-1d-knob"></div></div>
+          </div>
+        </div>
       </div>
       <div class="slider">
         <label>Скорость</label>
@@ -84,8 +89,8 @@
     </div>
   </div>
 
-  <!-- ПРАВО: руки / кисть / голова / голос / ИИ -->
-  <div class="col">
+  <!-- ПРАВО: руки / кисть / голова / голос / ИИ (только десктоп) -->
+  <div class="col desktop-only">
     <div class="card">
       <h2>Руки (позы)</h2>
       <div class="btns" id="armBtns"></div>
@@ -150,6 +155,30 @@
   </div>
 </main>
 
+<!-- Bottom Navigation -->
+<nav class="bottom-nav">
+  <a href="/" class="active">
+    <span class="nav-icon">🎮</span>
+    <span class="nav-label">Управление</span>
+  </a>
+  <a href="/features.html">
+    <span class="nav-icon">🤖</span>
+    <span class="nav-label">Функции</span>
+  </a>
+  <a href="/files.html">
+    <span class="nav-icon">📁</span>
+    <span class="nav-label">Файлы</span>
+  </a>
+  <a href="/prompts.html">
+    <span class="nav-icon">🧠</span>
+    <span class="nav-label">Промты</span>
+  </a>
+  <a href="/config.html">
+    <span class="nav-icon">⚙</span>
+    <span class="nav-label">Настройки</span>
+  </a>
+</nav>
+
 <footer id="log"></footer>
 
 <script src="js/base.js"></script>
@@ -157,7 +186,7 @@
 <script src="js/battery.js"></script>
 <script>
 'use strict';
-let ws=null, cfg=null, mode="manual", estop=false, aiMode="off", companionConfig=null, lastAiMode="internal";
+let ws=null, cfg=null, mode="manual", estop=false, aiMode="off", lastAiMode="internal";
 let move={vx:0,vy:0,wz:0}, padActive=false, turnActive=false, keyVec={f:0,s:0,l:0,r:0,sl:0,sr:0};
 
 // -------- WebSocket --------
@@ -179,11 +208,10 @@ function updateBattery(b){
 }
 
 function handle(m){
-  if(m.t==="hello"){ applyState(m); $("#dry").style.display=m.dry_run?"":"none"; if(m.companion) applyCompanion(m.companion); if(m.battery) updateBattery(m.battery); if(m.camera) syncCameraFromTelemetry(m.camera); }
+  if(m.t==="hello"){ applyState(m); $("#dry").style.display=m.dry_run?"":"none"; if(m.battery) updateBattery(m.battery); if(m.camera) syncCameraFromTelemetry(m.camera); }
   else if(m.t==="telemetry"){ applyState(m); $("#tvx").textContent=m.move.vx.toFixed(2);
-    $("#tvy").textContent=m.move.vy.toFixed(2); $("#twz").textContent=m.move.wz.toFixed(2); if(m.companion) applyCompanion(m.companion); if(m.battery) updateBattery(m.battery); if(m.camera) syncCameraFromTelemetry(m.camera); }
+    $("#tvy").textContent=m.move.vy.toFixed(2); $("#twz").textContent=m.move.wz.toFixed(2); if(m.battery) updateBattery(m.battery); if(m.camera) syncCameraFromTelemetry(m.camera); }
   else if(m.t==="event"){ logEvent(m); }
-  else if(m.t==="ai_reply"){ addMsg("bot",m.text); }
 }
 function applyState(m){
   if(typeof m.mode!=="undefined") setMode(m.mode,false);
@@ -215,24 +243,18 @@ async function setEstop(v,send_){ estop=v; $("#estop").classList.toggle("armed",
   refreshLocks();
 }
 function motionBlocked(){ return estop || mode==="teleop"; }
-function refreshLocks(){
-  const why = estop ? "Активен аварийный стоп" : (mode==="teleop"?"Активна VR-телеоперация":"");
-  $("#pad").classList.toggle("dis",motionBlocked());
-  turnStick.classList.toggle("dis",motionBlocked());
-  $("#lockMove").textContent=why; $("#lockArm").textContent=why;
-  document.querySelectorAll("#armBtns button,#handBtns button").forEach(b=>b.disabled=motionBlocked());
-}
 
 $("#mManual").onclick=()=>setMode("manual",true);
 $("#mTeleop").onclick=()=>setMode("teleop",true);
 $("#estop").onclick=()=>setEstop(!estop,true);
-$("#stopBtn").onclick=async()=>{move={vx:0,vy:0,wz:0};turnEl.value=0;try{await API.stopMove();}catch(e){}};
+$("#stopBtn").onclick=async()=>{move={vx:0,vy:0,wz:0};turnReset();try{await API.stopMove();}catch(e){}};
 
 // -------- Джойстик (vx + vy) --------
 const pad=$("#pad"), knob=pad.querySelector(".knob"), stick=pad.querySelector(".stick");
-function padSet(nx,ny){ // nx,ny in [-1,1]
+function padSet(nx,ny){
   if(!cfg)return;
-  const r=pad.clientWidth/2-33;
+  const knobR=knob.clientWidth/2;
+  const r=pad.clientWidth/2-knobR;
   knob.style.left=(50+nx*r/pad.clientWidth*100)+"%";
   knob.style.top=(50+ny*r/pad.clientWidth*100)+"%";
   const dist=Math.hypot(nx,ny)*r, ang=Math.atan2(ny,nx)*180/Math.PI;
@@ -254,11 +276,12 @@ pad.addEventListener("pointermove",e=>{ if(padActive) padXY(e); });
 pad.addEventListener("pointerup",()=>{ padActive=false; pad.classList.remove("active"); padReset(); });
 pad.addEventListener("pointercancel",()=>{ padActive=false; pad.classList.remove("active"); padReset(); });
 
-// -------- 1D-стик поворота (с возвратом в 0) --------
+// -------- 1D-стик поворота (горизонтальный) --------
 const turnStick=$("#turnStick"), turnKnob=turnStick.querySelector(".stick-1d-knob");
-function turnSet(nx){ // nx in [-1,1]
+function turnSet(nx){
   if(!cfg)return;
-  const r=turnStick.clientWidth/2-22;
+  const knobR=turnKnob.clientWidth/2;
+  const r=turnStick.clientWidth/2-knobR;
   turnKnob.style.left=(50+nx*r/turnStick.clientWidth*100)+"%";
   const spd=parseInt($("#spd").value)/100;
   move.wz=nx*cfg.limits.vyaw*spd;
@@ -291,7 +314,6 @@ function keyToMove(){
   else if(!padActive){ move.vx=0;move.wz=0;move.vy=0; }
 }
 
-// -------- Петля отправки движения 20 Гц --------
 setInterval(()=>{
   keyToMove();
   if(motionBlocked())return;
@@ -299,88 +321,6 @@ setInterval(()=>{
 },50);
 
 $("#spd").oninput=e=>$("#spdv").textContent=e.target.value+"%";
-
-// -------- Кнопки подсистем (строятся из /api/config) --------
-function buildButtons(){
-  const arm=$("#armBtns"); arm.innerHTML="";
-  cfg.arm_actions.forEach(a=>{
-    const b=document.createElement("button"); b.className="act"; b.textContent=a;
-    b.onclick=()=>API.armCommand(a).catch(()=>{}); arm.appendChild(b);
-  });
-  const hand=$("#handBtns"); hand.innerHTML="";
-  Object.keys(cfg.hand_presets).forEach(p=>{
-    const b=document.createElement("button"); b.className="act"; b.textContent=p;
-    b.onclick=()=>API.handCommand({preset:p}).catch(()=>{}); hand.appendChild(b);
-  });
-  const eye=$("#eyeBtns"); eye.innerHTML="";
-  Object.entries(cfg.eye_macros).forEach(([label,macro])=>{
-    const b=document.createElement("button"); b.className="act"; b.textContent="👁 "+label;
-    b.onclick=()=>headCmd({cmd:"servo_macro",name:macro}); eye.appendChild(b);
-  });
-  const anim=$("#ledAnim"); anim.innerHTML="";
-  cfg.led_animations.forEach(a=>{const o=document.createElement("option");o.value=a;o.textContent=a;anim.appendChild(o);});
-  refreshLocks();
-}
-
-// голова безопасна — доступна и в телеопе, и при E-STOP
-function headCmd(payload){ API.headCommand(payload).catch(()=>{}); }
-
-
-// -------- Голова: LED + авто-моргание --------
-$("#ledAnim").onchange=e=>headCmd({cmd:"led_animation",name:e.target.value});
-$("#ledColor").onchange=e=>headCmd({cmd:"led_color",color:e.target.value});
-$("#ledBri").oninput=e=>$("#ledBriV").textContent=e.target.value;
-$("#ledBri").onchange=e=>headCmd({cmd:"led_brightness",value:parseInt(e.target.value)});
-$("#ledSpd").oninput=e=>$("#ledSpdV").textContent=e.target.value;
-$("#ledSpd").onchange=e=>headCmd({cmd:"led_speed",value:parseInt(e.target.value)});
-$("#autoBlink").onchange=e=>headCmd({cmd:"auto_blink",enabled:e.target.checked,interval:3});
-const sendEyeL=throttle(v=>headCmd({cmd:"servo",which:1,angle:v}),80);
-const sendEyeR=throttle(v=>headCmd({cmd:"servo",which:2,angle:v}),80);
-$("#eyeL").oninput=e=>{$("#eyeLV").textContent=e.target.value;sendEyeL(parseInt(e.target.value));};
-$("#eyeR").oninput=e=>{$("#eyeRV").textContent=e.target.value;sendEyeR(parseInt(e.target.value));};
-$("#eyeSpd").oninput=e=>$("#eyeSpdV").textContent=e.target.value;
-$("#eyeSpd").onchange=e=>headCmd({cmd:"servo_speed",value:parseInt(e.target.value)});
-
-// -------- Голос / ИИ --------
-$("#ttsBtn").onclick=async()=>{ const t=$("#ttsText").value.trim(); if(t)try{await API.ttsCommand(t);}catch(e){}};
-
-// 3-state companion toggle
-function applyCompanion(c){
-  aiMode = c.mode || "off";
-  companionConfig = c.config || null;
-  if(aiMode !== "off") lastAiMode = aiMode;
-  document.querySelectorAll("#aiMode button").forEach(b=>b.classList.toggle("active",b.dataset.mode===aiMode));
-  const active = aiMode !== "off";
-  $("#aiText").disabled = !active;
-  $("#aiBtn").disabled = !active;
-  $("#aiText").placeholder = active ? "Спросить…" : "ИИ выключен…";
-  // Показываем выбранный конфиг для текущего режима
-  const cfgName = active
-    ? ((c.last_config && c.last_config[aiMode]) || c.config || "")
-    : "";
-  const statusText = active ? (aiMode==="internal"?"внутренняя ИИ":"внешняя ИИ") + (cfgName ? " · "+cfgName : "") : "";
-  $("#aiStatusText").textContent = statusText;
-  $("#configStatusBtn").textContent = active && cfgName ? cfgName : "настр.";
-}
-document.querySelectorAll("#aiMode button").forEach(b=>b.onclick=async()=>{
-  const newMode = b.dataset.mode;
-  companionConfig = null;
-  try {
-    const d = await API.companionSetMode(newMode, companionConfig);
-    applyCompanion(d);
-    if(!d.ok) logEvent({t:"event",level:"err",msg:d.message,ts:Date.now()/1000});
-  } catch(e) {
-    logEvent({t:"event",level:"err",msg:"Ошибка переключения ИИ: "+e,ts:Date.now()/1000});
-  }
-});
-
-async function askAI(){ const t=$("#aiText").value.trim(); if(!t||aiMode==="off")return; addMsg("me",t); $("#aiText").value="";
-  try { const d = await API.aiCommand(t, aiMode); if(d.ok) addMsg("bot",d.text); }
-  catch(e) { logEvent({t:"event",level:"err",msg:"ИИ: "+e,ts:Date.now()/1000}); }
-}
-$("#aiBtn").onclick=askAI;
-$("#aiText").addEventListener("keydown",e=>{if(e.key==="Enter")askAI();});
-function addMsg(who,text){ const d=document.createElement("div"); d.className="msg "+who; d.textContent=text; $("#chat").appendChild(d); $("#chat").scrollTop=1e9; }
 
 // -------- Видео --------
 let camActive = false, camPeer = null, camWs = null, camServerActive = false, camToggleTime = 0;
@@ -428,7 +368,6 @@ async function connectVideo() {
   disconnectVideo();
   updateCamStatus("connecting");
   try {
-    // Try WebRTC first
     await connectWebRTC();
   } catch(e) {
     console.warn("[CAM] WebRTC failed, falling back to MJPEG:", e);
@@ -438,10 +377,8 @@ async function connectVideo() {
 
 async function connectWebRTC() {
   const stunUrl = "stun:stun.l.google.com:19302";
-
   const pc = new RTCPeerConnection({ iceServers: [{ urls: stunUrl }] });
   camPeer = pc;
-
   pc.ontrack = (event) => {
     const v = $("#feedVideo");
     v.srcObject = event.streams[0];
@@ -449,57 +386,39 @@ async function connectWebRTC() {
     $("#feedph").style.display = "none";
     v.play().then(() => updateCamStatus("live")).catch(() => {});
   };
-
   pc.oniceconnectionstatechange = () => {
     if (pc.iceConnectionState === "failed" || pc.iceConnectionState === "disconnected") {
       updateCamStatus("error");
     }
   };
-
   pc.addTransceiver("video", { direction: "recvonly" });
-
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
-
   const resp = await fetch("/api/camera/webrtc/offer", {
     method: "POST",
     headers: {"Content-Type": "application/json"},
     body: JSON.stringify({ sdp: pc.localDescription.sdp, type: pc.localDescription.type })
   });
-
-  if (!resp.ok) {
-    throw new Error(`WebRTC signaling failed: HTTP ${resp.status}`);
-  }
-
+  if (!resp.ok) throw new Error(`WebRTC signaling failed: HTTP ${resp.status}`);
   const answer = await resp.json();
   if (answer.error) throw new Error(answer.error);
   if (!answer.sdp || !answer.type) throw new Error("Invalid WebRTC answer");
-
   await pc.setRemoteDescription(new RTCSessionDescription(answer));
 }
 
 function connectMjpeg() {
-  // Connect via FastAPI proxy (port 8080) to avoid CSP cross-origin issues
   const proto = location.protocol === "https:" ? "wss" : "ws";
-  const ws = new WebSocket(`${proto}://${location.host}/api/camera/ws/mjpeg`);
-  camWs = ws;
-  ws.binaryType = "arraybuffer";
+  const wsConn = new WebSocket(`${proto}://${location.host}/api/camera/ws/mjpeg`);
+  camWs = wsConn;
+  wsConn.binaryType = "arraybuffer";
   const img = $("#feed");
-
-  let buf = "";
-  ws.onmessage = (e) => {
-    // GStreamer multipartmux sends JPEG frames as binary
+  wsConn.onmessage = (e) => {
     const bytes = new Uint8Array(e.data);
-    // Find JPEG markers: FF D8 (SOI) ... FF D9 (EOI)
     for (let i = 0; i < bytes.length - 1; i++) {
       if (bytes[i] === 0xFF && bytes[i + 1] === 0xD8) {
-        // Found JPEG start — collect until EOI
         let end = -1;
         for (let j = i + 2; j < bytes.length - 1; j++) {
-          if (bytes[j] === 0xFF && bytes[j + 1] === 0xD9) {
-            end = j + 2;
-            break;
-          }
+          if (bytes[j] === 0xFF && bytes[j + 1] === 0xD9) { end = j + 2; break; }
         }
         if (end > 0) {
           const jpeg = bytes.slice(i, end);
@@ -512,11 +431,10 @@ function connectMjpeg() {
       }
     }
   };
-  ws.onerror = () => updateCamStatus("error");
-  ws.onclose = () => { if (camActive) updateCamStatus("error"); };
+  wsConn.onerror = () => updateCamStatus("error");
+  wsConn.onclose = () => { if (camActive) updateCamStatus("error"); };
 }
 
-// Camera Share Server toggle — controls backend server
 $("#camServerToggle").onclick = async () => {
   camToggleTime = Date.now();
   const turningOn = !camServerActive;
@@ -526,7 +444,6 @@ $("#camServerToggle").onclick = async () => {
       await API.cameraStart();
       camServerActive = true;
       label.textContent = "Camera Share Server: ON";
-      logEvent({t:"event",level:"info",msg:"Camera server запущен",ts:Date.now()/1000});
     } else {
       disconnectVideo();
       camActive = false;
@@ -535,29 +452,18 @@ $("#camServerToggle").onclick = async () => {
       camServerActive = false;
       label.textContent = "Camera Share Server: OFF";
       updateCamStatus("");
-      logEvent({t:"event",level:"info",msg:"Camera server остановлен",ts:Date.now()/1000});
     }
   } catch(e) {
-    // API failed — revert checkbox to actual backend state
-    console.warn("[CAM] toggle failed:", e);
     await syncCameraServerState();
     return;
   }
   updateCamToggleState();
 };
 
-// Video display toggle — client-side only
 $("#camToggle").onclick = async () => {
-  if (!camServerActive) {
-    $("#camToggle").checked = false;
-    return;
-  }
+  if (!camServerActive) { $("#camToggle").checked = false; return; }
   camActive = $("#camToggle").checked;
-  if (camActive) {
-    connectVideo();
-  } else {
-    disconnectVideo();
-  }
+  if (camActive) { connectVideo(); } else { disconnectVideo(); }
   updateCamStatus(camActive ? "connecting" : "");
   updateCamToggleState();
 };
@@ -570,27 +476,11 @@ function logEvent(m){ const el=document.createElement("div"); el.className="log 
   while(log.children.length>150) log.removeChild(log.firstChild);
 }
 
-async function updatePromptStatus() {
-  try {
-    const data = await API.getActivePrompt();
-    const name = data.active;
-    const display = document.getElementById('promptNameDisplay');
-    display.textContent = name || 'не выбран';
-  } catch (e) {
-    console.warn('Не удалось получить активный промт', e);
-  }
-}
 // -------- Старт --------
-function tryVideo() { /* no-op: camera is toggled by user via camToggle */ }
-
 (async function() {
   try {
     cfg = await API.getConfig();
-    buildButtons();
     connect();
-    updatePromptStatus();
-    fetchCompanionStatus();
-    // Sync camera server state with backend
     await syncCameraServerState();
   } catch(e) { console.error('Init failed:', e); }
 })();
@@ -599,13 +489,10 @@ async function syncCameraServerState() {
   try {
     const st = await API.cameraStatus();
     syncCameraFromTelemetry(st, true);
-  } catch(e) {
-    console.warn("Camera status sync failed:", e);
-  }
+  } catch(e) {}
 }
 
 function syncCameraFromTelemetry(cam, force) {
-  // Don't override user-initiated toggle while backend processes the state change
   if (!force && Date.now() - camToggleTime < 1000) return;
   const serverOn = cam.state === "local" || cam.state === "relay";
   if (camServerActive !== serverOn) {
@@ -618,12 +505,112 @@ function syncCameraFromTelemetry(cam, force) {
   }
 }
 
-async function fetchCompanionStatus(){
-  try{
-    const d = await API.companionStatus();
-    applyCompanion(d);
-  }catch(e){console.warn("Companion status fetch failed:",e);}
+// -------- Desktop Features (только десктоп) --------
+
+function buildButtons(){
+  if(!cfg) return;
+  const arm=$("#armBtns"); if(!arm) return; arm.innerHTML="";
+  cfg.arm_actions.forEach(a=>{
+    const b=document.createElement("button"); b.className="act"; b.textContent=a;
+    b.onclick=()=>API.armCommand(a).catch(()=>{}); arm.appendChild(b);
+  });
+  const hand=$("#handBtns"); if(!hand) return; hand.innerHTML="";
+  Object.keys(cfg.hand_presets).forEach(p=>{
+    const b=document.createElement("button"); b.className="act"; b.textContent=p;
+    b.onclick=()=>API.handCommand({preset:p}).catch(()=>{}); hand.appendChild(b);
+  });
+  const eye=$("#eyeBtns"); if(!eye) return; eye.innerHTML="";
+  Object.entries(cfg.eye_macros).forEach(([label,macro])=>{
+    const b=document.createElement("button"); b.className="act"; b.textContent=label;
+    b.onclick=()=>headCmd({cmd:"servo_macro",name:macro}); eye.appendChild(b);
+  });
+  const anim=$("#ledAnim"); if(!anim) return; anim.innerHTML="";
+  cfg.led_animations.forEach(a=>{const o=document.createElement("option");o.value=a;o.textContent=a;anim.appendChild(o);});
+  refreshLocks();
 }
-</script>
+
+function headCmd(payload){ API.headCommand(payload).catch(()=>{}); }
+
+function refreshLocks(){
+  const why = estop ? "Активен аварийный стоп" : (mode==="teleop"?"Активна VR-телеоперация":"");
+  $("#pad").classList.toggle("dis",motionBlocked());
+  turnStick.classList.toggle("dis",motionBlocked());
+  $("#lockMove").textContent=why;
+  const lockArm=$("#lockArm"); if(lockArm) lockArm.textContent=why;
+  document.querySelectorAll("#armBtns button,#handBtns button").forEach(b=>b.disabled=motionBlocked());
+}
+
+// LED
+const ledAnim=$("#ledAnim"), ledColor=$("#ledColor"), ledBri=$("#ledBri"), ledSpd=$("#ledSpd");
+if(ledAnim) ledAnim.onchange=e=>headCmd({cmd:"led_animation",name:e.target.value});
+if(ledColor) ledColor.onchange=e=>headCmd({cmd:"led_color",color:e.target.value});
+if(ledBri){ ledBri.oninput=e=>{$("#ledBriV").textContent=e.target.value;}; ledBri.onchange=e=>headCmd({cmd:"led_brightness",value:parseInt(e.target.value)}); }
+if(ledSpd){ ledSpd.oninput=e=>{$("#ledSpdV").textContent=e.target.value;}; ledSpd.onchange=e=>headCmd({cmd:"led_speed",value:parseInt(e.target.value)}); }
+const autoBlink=$("#autoBlink"); if(autoBlink) autoBlink.onchange=e=>headCmd({cmd:"auto_blink",enabled:e.target.checked,interval:3});
+const sendEyeL=throttle(v=>headCmd({cmd:"servo",which:1,angle:v}),80);
+const sendEyeR=throttle(v=>headCmd({cmd:"servo",which:2,angle:v}),80);
+const eyeL=$("#eyeL"), eyeR=$("#eyeR"), eyeSpd=$("#eyeSpd");
+if(eyeL) eyeL.oninput=e=>{$("#eyeLV").textContent=e.target.value;sendEyeL(parseInt(e.target.value));};
+if(eyeR) eyeR.oninput=e=>{$("#eyeRV").textContent=e.target.value;sendEyeR(parseInt(e.target.value));};
+if(eyeSpd){ eyeSpd.oninput=e=>{$("#eyeSpdV").textContent=e.target.value;}; eyeSpd.onchange=e=>headCmd({cmd:"servo_speed",value:parseInt(e.target.value)}); }
+
+// TTS
+const ttsBtn=$("#ttsBtn"), ttsText=$("#ttsText");
+if(ttsBtn) ttsBtn.onclick=async()=>{ const t=ttsText.value.trim(); if(t)try{await API.ttsCommand(t);}catch(e){}};
+
+// AI
+function applyCompanion(c){
+  aiMode = c.mode || "off";
+  if(aiMode !== "off") lastAiMode = aiMode;
+  document.querySelectorAll("#aiMode button").forEach(b=>b.classList.toggle("active",b.dataset.mode===aiMode));
+  const active = aiMode !== "off";
+  const aiText=$("#aiText"), aiBtn=$("#aiBtn");
+  if(aiText) aiText.disabled = !active;
+  if(aiBtn) aiBtn.disabled = !active;
+  if(aiText) aiText.placeholder = active ? "Спросить…" : "ИИ выключен…";
+  const cfgName = active ? ((c.last_config && c.last_config[aiMode]) || c.config || "") : "";
+  const statusText = active ? (aiMode==="internal"?"внутренняя ИИ":"внешняя ИИ") + (cfgName ? " · "+cfgName : "") : "";
+  const aiStatusText=$("#aiStatusText"); if(aiStatusText) aiStatusText.textContent = statusText;
+  const configStatusBtn=$("#configStatusBtn"); if(configStatusBtn) configStatusBtn.textContent = active && cfgName ? cfgName : "настр.";
+}
+document.querySelectorAll("#aiMode button").forEach(b=>b.onclick=async()=>{
+  const newMode = b.dataset.mode;
+  try {
+    const d = await API.companionSetMode(newMode, null);
+    applyCompanion(d);
+    if(!d.ok) logEvent({t:"event",level:"err",msg:d.message,ts:Date.now()/1000});
+  } catch(e) {
+    logEvent({t:"event",level:"err",msg:"Ошибка переключения ИИ: "+e,ts:Date.now()/1000});
+  }
+});
+
+async function askAI(){ const t=$("#aiText").value.trim(); if(!t||aiMode==="off")return; addMsg("me",t); $("#aiText").value="";
+  try { const d = await API.aiCommand(t, aiMode); if(d.ok) addMsg("bot",d.text); }
+  catch(e) { logEvent({t:"event",level:"err",msg:"ИИ: "+e,ts:Date.now()/1000}); }
+}
+const aiBtn=$("#aiBtn"), aiText=$("#aiText");
+if(aiBtn) aiBtn.onclick=askAI;
+if(aiText) aiText.addEventListener("keydown",e=>{if(e.key==="Enter")askAI();});
+function addMsg(who,text){ const chat=$("#chat"); if(!chat) return; const d=document.createElement("div"); d.className="msg "+who; d.textContent=text; chat.appendChild(d); chat.scrollTop=1e9; }
+
+async function updatePromptStatus() {
+  try {
+    const data = await API.getActivePrompt();
+    const name = data.active;
+    const el=document.getElementById('promptNameDisplay');
+    if(el) el.textContent = name || 'не выбран';
+  } catch (e) {}
+}
+
+// -------- Старт --------
+(async function() {
+  try {
+    cfg = await API.getConfig();
+  } catch(e) { console.error('Config failed:', e); }
+  try { buildButtons(); } catch(e) { console.error('buildButtons failed:', e); }
+  connect();
+  try { updatePromptStatus(); } catch(e) {}
+  try { await syncCameraServerState(); } catch(e) {}
+})();
 </body>
 </html>

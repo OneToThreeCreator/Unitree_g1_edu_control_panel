@@ -1,10 +1,14 @@
 main{flex:1;display:flex;gap:20px;padding:20px;overflow:hidden}
+
+/* Sidebar (desktop) */
 .sidebar{width:240px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px;display:flex;flex-direction:column;overflow-y:auto}
 .sidebar h2{font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--dim);margin:0 0 10px}
 .prompt-item{padding:8px 10px;border-radius:6px;cursor:pointer;margin-bottom:4px;font-size:13px;border:1px solid transparent}
 .prompt-item:hover{background:var(--panel2);border-color:var(--line)}
 .prompt-item.active{background:var(--accent);color:#fff;border-color:var(--accent)}
 .prompt-item .badge{font-size:10px;color:var(--dim);margin-left:8px}
+
+/* Editor */
 .editor{flex:1;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:12px}
 .editor .top{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
 .editor .top .name-wrap{display:flex;align-items:center;gap:6px;flex:1}
@@ -19,3 +23,37 @@ main{flex:1;display:flex;gap:20px;padding:20px;overflow:hidden}
 .editor .actions button.danger{background:var(--err);color:#fff;border-color:var(--err)}
 .editor .actions button:disabled{opacity:0.4;cursor:not-allowed}
 .footnote{font-size:12px;color:var(--dim);margin-top:8px}
+
+/* Back button in editor header */
+.editor .top .back-btn{display:none}
+
+/* ===== Mobile ===== */
+@media(max-width:768px){
+  main{
+    flex-direction:column;gap:0;padding:0;
+    padding-bottom:var(--nav-h);
+  }
+
+  /* Sidebar: fullscreen */
+  .sidebar{
+    width:100%;border-radius:0;border:0;
+    padding:8px;flex:1;min-height:0;
+  }
+
+  /* Editor: fullscreen */
+  .editor{
+    position:fixed;top:0;left:0;right:0;bottom:0;z-index:100;
+    background:var(--bg);
+    padding:8px;padding-top:calc(8px + env(safe-area-inset-top, 0px));
+    padding-bottom:var(--nav-h);
+    border-radius:0;border:0;
+    display:none;flex-direction:column;gap:8px;
+  }
+  .editor.visible{display:flex}
+
+  .editor .top{display:flex;gap:8px}
+  .editor .top .back-btn{display:inline-flex}
+  .editor textarea{min-height:0;flex:1;font-size:14px}
+  .editor .actions{flex-wrap:wrap}
+  .editor .actions button{flex:1;min-width:0;text-align:center;padding:10px 8px}
+}
