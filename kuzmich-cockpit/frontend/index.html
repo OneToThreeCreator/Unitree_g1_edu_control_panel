@@ -153,6 +153,7 @@
       <button class="act" id="aiBtn" disabled>➤</button>
     </div>
   </div>
+  </div>
 </main>
 
 <!-- Bottom Navigation -->
@@ -186,15 +187,21 @@
 <script src="js/battery.js"></script>
 <script>
 'use strict';
+window.onerror=function(m,s,l,c,e){console.error("[DBG] UNCAUGHT:",m,"at",s+":"+l+":"+c,e);};
 let ws=null, cfg=null, mode="manual", estop=false, aiMode="off", lastAiMode="internal";
 let move={vx:0,vy:0,wz:0}, padActive=false, turnActive=false, keyVec={f:0,s:0,l:0,r:0,sl:0,sr:0};
+const DEFAULT_CFG={limits:{vx:0.5,vy:0.5,vyaw:0.5},arm_actions:[],hand_presets:{},eye_macros:[],led_animations:[]};
+function getCfg(){return cfg||DEFAULT_CFG;}
 
 // -------- WebSocket --------
 function connect(){
-  ws=new WebSocket((location.protocol==="https:"?"wss":"ws")+"://"+location.host+"/ws");
-  ws.onopen=()=>setConn(true);
-  ws.onclose=()=>{setConn(false);setTimeout(connect,1500);};
-  ws.onmessage=e=>handle(JSON.parse(e.data));
+  const url=(location.protocol==="https:"?"wss":"ws")+"://"+location.host+"/ws";
+  console.log("[DBG] connect() called, url="+url);
+  ws=new WebSocket(url);
+  ws.onopen=()=>{console.log("[DBG] WS onopen");setConn(true);};
+  ws.onclose=(e)=>{console.log("[DBG] WS onclose code="+e.code+" reason="+e.reason);setConn(false);setTimeout(connect,1500);};
+  ws.onerror=(e)=>{console.error("[DBG] WS onerror",e);};
+  ws.onmessage=e=>{console.log("[DBG] WS msg:",e.data.substring(0,120));handle(JSON.parse(e.data));};
 }
 function send(o){ if(ws&&ws.readyState===1) ws.send(JSON.stringify(o)); }
 function setConn(on){ $("#conn").classList.toggle("on",on); $("#connt").textContent=on?"на связи":"нет связи"; }
@@ -250,9 +257,9 @@ $("#estop").onclick=()=>setEstop(!estop,true);
 $("#stopBtn").onclick=async()=>{move={vx:0,vy:0,wz:0};turnReset();try{await API.stopMove();}catch(e){}};
 
 // -------- Джойстик (vx + vy) --------
-const pad=$("#pad"), knob=pad.querySelector(".knob"), stick=pad.querySelector(".stick");
+const pad=$("#pad"), knob=pad&&pad.querySelector(".knob"), stick=pad&&pad.querySelector(".stick");
+console.log("[DBG] pad="+pad+" knob="+knob+" stick="+stick+" $ defined="+(typeof $));
 function padSet(nx,ny){
-  if(!cfg)return;
   const knobR=knob.clientWidth/2;
   const r=pad.clientWidth/2-knobR;
   knob.style.left=(50+nx*r/pad.clientWidth*100)+"%";
@@ -261,8 +268,9 @@ function padSet(nx,ny){
   stick.style.width=dist+"px";
   stick.style.transform=`translate(0,-50%) rotate(${ang}deg)`;
   const spd=parseInt($("#spd").value)/100;
-  move.vx = -ny*cfg.limits.vx*spd;
-  move.vy = nx*cfg.limits.vy*spd;
+  const lim=getCfg().limits;
+  move.vx = -ny*lim.vx*spd;
+  move.vy = nx*lim.vy*spd;
 }
 function padReset(){ knob.style.left="50%";knob.style.top="50%"; stick.style.width="0"; move.vx=0;move.vy=0; }
 function padXY(ev){
@@ -271,20 +279,20 @@ function padXY(ev){
   const mag=Math.hypot(x,y); if(mag>1){x/=mag;y/=mag;}
   padSet(x,y);
 }
-pad.addEventListener("pointerdown",e=>{ if(motionBlocked())return; padActive=true; pad.classList.add("active"); pad.setPointerCapture(e.pointerId); padXY(e); });
+if(pad){pad.addEventListener("pointerdown",e=>{ console.log("[DBG] pad pointerdown, motionBlocked="+motionBlocked()); if(motionBlocked())return; padActive=true; pad.classList.add("active"); pad.setPointerCapture(e.pointerId); padXY(e); });
 pad.addEventListener("pointermove",e=>{ if(padActive) padXY(e); });
 pad.addEventListener("pointerup",()=>{ padActive=false; pad.classList.remove("active"); padReset(); });
-pad.addEventListener("pointercancel",()=>{ padActive=false; pad.classList.remove("active"); padReset(); });
+pad.addEventListener("pointercancel",()=>{ padActive=false; pad.classList.remove("active"); padReset(); });}
 
 // -------- 1D-стик поворота (горизонтальный) --------
-const turnStick=$("#turnStick"), turnKnob=turnStick.querySelector(".stick-1d-knob");
+const turnStick=$("#turnStick"), turnKnob=turnStick&&turnStick.querySelector(".stick-1d-knob");
+console.log("[DBG] turnStick="+turnStick+" turnKnob="+turnKnob);
 function turnSet(nx){
-  if(!cfg)return;
   const knobR=turnKnob.clientWidth/2;
   const r=turnStick.clientWidth/2-knobR;
   turnKnob.style.left=(50+nx*r/turnStick.clientWidth*100)+"%";
   const spd=parseInt($("#spd").value)/100;
-  move.wz=nx*cfg.limits.vyaw*spd;
+  move.wz=nx*getCfg().limits.vyaw*spd;
 }
 function turnReset(){ turnKnob.style.left="50%"; move.wz=0; }
 function turnX(ev){
@@ -293,10 +301,10 @@ function turnX(ev){
   if(Math.abs(x)>1) x=Math.sign(x);
   turnSet(x);
 }
-turnStick.addEventListener("pointerdown",e=>{ if(motionBlocked())return; turnActive=true; turnStick.classList.add("active"); turnStick.setPointerCapture(e.pointerId); turnX(e); });
+if(turnStick){turnStick.addEventListener("pointerdown",e=>{ if(motionBlocked())return; turnActive=true; turnStick.classList.add("active"); turnStick.setPointerCapture(e.pointerId); turnX(e); });
 turnStick.addEventListener("pointermove",e=>{ if(turnActive) turnX(e); });
 turnStick.addEventListener("pointerup",()=>{ turnActive=false; turnStick.classList.remove("active"); turnReset(); });
-turnStick.addEventListener("pointercancel",()=>{ turnActive=false; turnStick.classList.remove("active"); turnReset(); });
+turnStick.addEventListener("pointercancel",()=>{ turnActive=false; turnStick.classList.remove("active"); turnReset(); });}
 
 // -------- Клавиатура --------
 const keymap={KeyW:"f",KeyS:"s",KeyA:"sl",KeyD:"sr",KeyQ:"l",KeyE:"r"};
@@ -307,16 +315,18 @@ addEventListener("keydown",e=>{
 });
 addEventListener("keyup",e=>{ if(keymap[e.code])keyVec[keymap[e.code]]=0; });
 function keyToMove(){
-  if(!cfg||padActive||turnActive||motionBlocked())return;
+  if(padActive||turnActive||motionBlocked())return;
   const spd=parseInt($("#spd").value)/100;
+  const lim=getCfg().limits;
   const f=keyVec.f-keyVec.s, yaw=keyVec.l-keyVec.r, strafe=keyVec.sl-keyVec.sr;
-  if(f||yaw||strafe){ move.vx=f*cfg.limits.vx*spd; move.wz=yaw*cfg.limits.vyaw*spd; move.vy=strafe*cfg.limits.vy*spd; }
+  if(f||yaw||strafe){ move.vx=f*lim.vx*spd; move.wz=yaw*lim.vyaw*spd; move.vy=strafe*lim.vy*spd; }
   else if(!padActive){ move.vx=0;move.wz=0;move.vy=0; }
 }
 
 setInterval(()=>{
   keyToMove();
   if(motionBlocked())return;
+  if(move.vx||move.vy||move.wz) console.log("[DBG] send move:",move.vx.toFixed(2),move.vy.toFixed(2),move.wz.toFixed(2));
   send({vx:move.vx,vy:move.vy,wz:move.wz});
 },50);
 
@@ -476,15 +486,6 @@ function logEvent(m){ const el=document.createElement("div"); el.className="log 
   while(log.children.length>150) log.removeChild(log.firstChild);
 }
 
-// -------- Старт --------
-(async function() {
-  try {
-    cfg = await API.getConfig();
-    connect();
-    await syncCameraServerState();
-  } catch(e) { console.error('Init failed:', e); }
-})();
-
 async function syncCameraServerState() {
   try {
     const st = await API.cameraStatus();
@@ -508,24 +509,24 @@ function syncCameraFromTelemetry(cam, force) {
 // -------- Desktop Features (только десктоп) --------
 
 function buildButtons(){
-  if(!cfg) return;
+  const c=getCfg();
   const arm=$("#armBtns"); if(!arm) return; arm.innerHTML="";
-  cfg.arm_actions.forEach(a=>{
+  c.arm_actions.forEach(a=>{
     const b=document.createElement("button"); b.className="act"; b.textContent=a;
     b.onclick=()=>API.armCommand(a).catch(()=>{}); arm.appendChild(b);
   });
   const hand=$("#handBtns"); if(!hand) return; hand.innerHTML="";
-  Object.keys(cfg.hand_presets).forEach(p=>{
+  Object.keys(c.hand_presets).forEach(p=>{
     const b=document.createElement("button"); b.className="act"; b.textContent=p;
     b.onclick=()=>API.handCommand({preset:p}).catch(()=>{}); hand.appendChild(b);
   });
   const eye=$("#eyeBtns"); if(!eye) return; eye.innerHTML="";
-  Object.entries(cfg.eye_macros).forEach(([label,macro])=>{
+  Object.entries(c.eye_macros).forEach(([label,macro])=>{
     const b=document.createElement("button"); b.className="act"; b.textContent=label;
     b.onclick=()=>headCmd({cmd:"servo_macro",name:macro}); eye.appendChild(b);
   });
   const anim=$("#ledAnim"); if(!anim) return; anim.innerHTML="";
-  cfg.led_animations.forEach(a=>{const o=document.createElement("option");o.value=a;o.textContent=a;anim.appendChild(o);});
+  c.led_animations.forEach(a=>{const o=document.createElement("option");o.value=a;o.textContent=a;anim.appendChild(o);});
   refreshLocks();
 }
 
@@ -603,14 +604,19 @@ async function updatePromptStatus() {
 }
 
 // -------- Старт --------
+console.log("[DBG] script loaded, location="+location.href);
 (async function() {
+  console.log("[DBG] init IIFE started");
   try {
     cfg = await API.getConfig();
-  } catch(e) { console.error('Config failed:', e); }
-  try { buildButtons(); } catch(e) { console.error('buildButtons failed:', e); }
+    console.log("[DBG] API.getConfig() OK, cfg=", JSON.stringify(cfg).substring(0,200));
+  } catch(e) { console.error('[DBG] Config failed:', e); }
+  try { buildButtons(); } catch(e) { console.error('[DBG] buildButtons failed:', e); }
   connect();
   try { updatePromptStatus(); } catch(e) {}
   try { await syncCameraServerState(); } catch(e) {}
+  console.log("[DBG] init IIFE done");
 })();
+</script>
 </body>
 </html>
