@@ -156,6 +156,12 @@
   </div>
 </main>
 
+<!-- Mobile Mode Toggle -->
+<div class="mobile-modes">
+  <button id="mManualM" class="active" onclick="setMode('manual',true)">Ручной</button>
+  <button id="mTeleopM" onclick="setMode('teleop',true)">Телеоп</button>
+</div>
+
 <!-- Bottom Navigation -->
 <nav class="bottom-nav">
   <a href="/" class="active">
@@ -190,7 +196,7 @@
 window.onerror=function(m,s,l,c,e){console.error("[DBG] UNCAUGHT:",m,"at",s+":"+l+":"+c,e);};
 let ws=null, cfg=null, mode="manual", estop=false, aiMode="off", lastAiMode="internal";
 let move={vx:0,vy:0,wz:0}, padActive=false, turnActive=false, keyVec={f:0,s:0,l:0,r:0,sl:0,sr:0};
-const DEFAULT_CFG={limits:{vx:0.5,vy:0.5,vyaw:0.5},arm_actions:[],hand_presets:{},eye_macros:[],led_animations:[]};
+const DEFAULT_CFG={limits:{vx:0.6,vy:0.6,vyaw:0.5},arm_actions:[],hand_presets:{},eye_macros:[],led_animations:[]};
 function getCfg(){return cfg||DEFAULT_CFG;}
 
 // -------- WebSocket --------
@@ -229,6 +235,9 @@ function applyState(m){
 async function setMode(m,send_){ mode=m;
   $("#mManual").classList.toggle("active",m==="manual");
   $("#mTeleop").classList.toggle("active",m==="teleop");
+  const mManM=$("#mManualM"), mTelM=$("#mTeleopM");
+  if(mManM) mManM.classList.toggle("active",m==="manual");
+  if(mTelM) mTelM.classList.toggle("active",m==="teleop");
   if(send_) {
     try {
       await API.setMode(m);

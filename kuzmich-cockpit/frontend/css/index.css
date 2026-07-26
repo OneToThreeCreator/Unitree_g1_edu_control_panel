@@ -93,12 +93,28 @@ footer{height:132px;background:var(--panel);border-top:1px solid var(--line);pad
 .switch input:checked+.slider::before{transform:translateX(18px);background:#fff}
 #camLabel{font-size:13px;color:var(--dim)}
 
+/* ===== Mobile Mode Toggle ===== */
+.mobile-modes{display:none}
+
 /* ===== Mobile ===== */
 @media(max-width:768px){
+  .modes{display:none}
+  .mobile-modes{
+    display:flex;position:fixed;bottom:var(--nav-h);left:0;right:0;z-index:200;
+    background:var(--panel);border-top:1px solid var(--line);
+    padding:6px 12px;gap:8px;justify-content:center;
+  }
+  .mobile-modes button{
+    flex:1;padding:10px;border:1px solid var(--line);border-radius:8px;
+    background:var(--panel2);color:var(--dim);cursor:pointer;font:inherit;font-size:13px;font-weight:600;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .mobile-modes button.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .mobile-modes button:active{opacity:.8}
   main{
     grid-template-columns:1fr;
     gap:8px;padding:8px;
-    padding-bottom:calc(var(--nav-h) + 8px);
+    padding-bottom:calc(var(--nav-h) + 52px);
   }
   .video-section,.control-section{overflow:visible}
 
