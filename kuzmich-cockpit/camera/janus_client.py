@@ -136,28 +136,14 @@ class JanusClient:
         raise JanusError(-1, "No SDP offer received from Janus")
 
     async def start(self, sdp: str) -> Dict[str, Any]:
-        """Start stream with SDP answer in JSEP. Waits for 'starting' event."""
-        await self._send({
+        """Start stream with SDP answer in JSEP. Returns ack immediately."""
+        result = await self._send({
             "janus": "message",
             "body": {"request": "start"},
             "jsep": {"type": "answer", "sdp": sdp},
         })
-        log.info("Start sent, waiting for starting event...")
-
-        # Poll for async "starting" event (up to 10 seconds)
-        deadline = time.time() + 10
-        while time.time() < deadline:
-            events = await self._poll_events(timeout=2)
-            for event in events:
-                plugindata = event.get("plugindata", {})
-                status = plugindata.get("data", {}).get("status")
-                if status:
-                    log.info("Stream status: %s", status)
-                    return {"janus": "ack", "status": status}
-            await asyncio.sleep(0.1)
-
-        log.warning("No 'starting' event received, proceeding anyway")
-        return {"janus": "ack"}
+        log.info("Start sent to Janus")
+        return result
 
     async def trickle_ice(self, candidate: Dict[str, Any]) -> Dict[str, Any]:
         """Send ICE candidate."""
