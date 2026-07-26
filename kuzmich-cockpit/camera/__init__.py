@@ -180,16 +180,26 @@ async def webrtc_answer(data: Dict[str, Any]):
 
 @router.post("/webrtc/ice")
 async def webrtc_ice(data: Dict[str, Any]):
-    """Always buffer ICE candidate — sent after start per Janus protocol."""
+    """Forward ICE candidate to Janus immediately, buffer if handle not ready."""
     global _pending_ice
 
     candidate = data.get("candidate")
     if not candidate:
         raise HTTPException(400, "Missing ICE candidate")
 
-    _pending_ice.append(candidate)
-    log.info("ICE candidate buffered (%d pending)", len(_pending_ice))
-    return {"status": "ok"}
+    # If handle ready, send immediately
+    if _janus_client is not None and _janus_client._handle_id is not None:
+        try:
+            await _janus_client.trickle_ice(candidate)
+            return {"status": "ok"}
+        except Exception as e:
+            log.warning("ICE trickle failed: %s", e)
+            _pending_ice.append(candidate)
+            return {"status": "error"}
+    else:
+        _pending_ice.append(candidate)
+        log.info("ICE candidate buffered (%d pending)", len(_pending_ice))
+        return {"status": "buffered"}
 
 
 @router.post("/webrtc/hangup")
