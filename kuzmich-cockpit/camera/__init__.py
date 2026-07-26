@@ -142,9 +142,23 @@ async def webrtc_offer(data: Dict[str, Any]):
         raise HTTPException(502, f"WebRTC signaling error: {e}")
 
 
+@router.post("/webrtc/ice")
+async def webrtc_ice(data: Dict[str, Any]):
+    """Buffer ICE candidate — will be sent after start."""
+    global _pending_ice
+
+    candidate = data.get("candidate")
+    if not candidate:
+        raise HTTPException(400, "Missing ICE candidate")
+
+    _pending_ice.append(candidate)
+    log.info("ICE candidate buffered (%d pending)", len(_pending_ice))
+    return {"status": "ok"}
+
+
 @router.post("/webrtc/answer")
 async def webrtc_answer(data: Dict[str, Any]):
-    """Receive browser SDP answer, send start with JSEP, then flush ICE."""
+    """Receive browser SDP answer, send start, then trickle all candidates."""
     global _pending_ice
     if _janus_client is None:
         raise HTTPException(503, "No active Janus session")
@@ -154,52 +168,35 @@ async def webrtc_answer(data: Dict[str, Any]):
     if sdp_type != "answer" or not sdp:
         raise HTTPException(400, "Expected SDP answer with type='answer'")
 
-    # Fix SDP answer for Janus 0.7.3 DTLS compatibility:
-    # Browser sends a=setup:actpass, but Janus expects a=setup:active
+    # Fix SDP answer for Janus DTLS compatibility
     sdp = sdp.replace("a=setup:actpass", "a=setup:active")
 
     try:
-        # Step 1: Start with SDP answer in JSEP FIRST (per Janus docs)
+        # Step 1: Start with SDP answer in JSEP
         await _janus_client.start(sdp)
 
-        # Step 2: Then send ICE trickle candidates
-        for c in _pending_ice:
-            try:
-                await _janus_client.trickle_ice(c)
-            except Exception:
-                pass
-        _pending_ice = []
+        # Step 2: Wait for Janus to process SDP
+        await asyncio.sleep(0.2)
 
-        log.info("WebRTC stream started")
+        # Step 3: Send ALL buffered ICE candidates
+        sent = 0
+        while _pending_ice:
+            candidates = list(_pending_ice)
+            _pending_ice = []
+            for c in candidates:
+                try:
+                    await _janus_client.trickle_ice(c)
+                    sent += 1
+                except Exception:
+                    pass
+            # Check for any new candidates that arrived while sending
+            await asyncio.sleep(0.05)
 
+        log.info("WebRTC started, sent %d ICE candidates", sent)
         return {"status": "ok"}
     except Exception as e:
         log.error("WebRTC answer failed: %s", e)
         raise HTTPException(502, f"WebRTC answer error: {e}")
-
-
-@router.post("/webrtc/ice")
-async def webrtc_ice(data: Dict[str, Any]):
-    """Forward ICE candidate to Janus immediately, buffer if handle not ready."""
-    global _pending_ice
-
-    candidate = data.get("candidate")
-    if not candidate:
-        raise HTTPException(400, "Missing ICE candidate")
-
-    # If handle ready, send immediately
-    if _janus_client is not None and _janus_client._handle_id is not None:
-        try:
-            await _janus_client.trickle_ice(candidate)
-            return {"status": "ok"}
-        except Exception as e:
-            log.warning("ICE trickle failed: %s", e)
-            _pending_ice.append(candidate)
-            return {"status": "error"}
-    else:
-        _pending_ice.append(candidate)
-        log.info("ICE candidate buffered (%d pending)", len(_pending_ice))
-        return {"status": "buffered"}
 
 
 @router.post("/webrtc/hangup")
